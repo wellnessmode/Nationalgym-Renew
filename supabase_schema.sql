@@ -1,11 +1,10 @@
 -- ===========================================================================
--- 내셔널짐 전자계약서 시스템 스키마
+-- 내셔널짐 전자계약서 시스템 스키마 v2 (Enterprise)
 -- ===========================================================================
 --
 --  ⚠️  중요: 반드시 "별도 신규 Supabase 프로젝트"에 실행하세요.
 --      - 기존 golf_pt_collabo (members/assessments/sessions/reports) 프로젝트
 --        ❌ 에 적용 금지
---      - 다른 운영 중인 프로젝트 ❌ 에 적용 금지
 --      - 본 시스템 전용 신규 프로젝트만 사용
 --
 --  사용 방법:
@@ -15,6 +14,19 @@
 --    3) 본 파일을 SQL Editor 에 전체 복사하여 실행
 --    4) Authentication → Users 에서 관리자 계정 추가
 --    5) 같은 폴더의 config.js 에 URL / anon key 입력
+--
+--  v2 (Enterprise) 변경사항:
+--    - 손글씨 서명 → 체크박스 동의 기반 (전자서명법 2020 개정 효력 인정)
+--    - 본인확인(이름+생년월일+휴대폰 끝4) 게이트 추가
+--    - content_hash(SHA-256) 무결성 보장
+--    - 서버사이드 스냅샷 재구성 (RPC 내 template 재조회)
+--    - inet_client_addr() / x-forwarded-for 자동 IP 수집
+--    - 감사 이벤트 세분화 (link_viewed, terms_scrolled, identity_verified,
+--      consent_checked, consented, pdf_downloaded)
+--    - signed 후 immutable 트리거
+--    - audit_log append-only 트리거
+--    - PIPA 분리 동의(수집/민감/제3자/마케팅) 시드 반영
+--    - 방문판매법 §31 중도해지권 안내, 표준약관 §10095 환불공식 명시
 -- ===========================================================================
 
 -- 안전 가드: 기존 골프PT콜라보 프로젝트에 잘못 적용하는 것을 방지
@@ -33,10 +45,12 @@ begin
 end;
 $guard$;
 
--- 0) 확장 (gen_random_uuid)
+-- 0) 확장 (gen_random_uuid, sha256)
 create extension if not exists pgcrypto;
 
--- 1) 약관 템플릿 ----------------------------------------------------------
+-- ===========================================================================
+-- 1) 약관 템플릿
+-- ===========================================================================
 create table if not exists public.contract_templates (
   id              uuid primary key default gen_random_uuid(),
   contract_type   text not null check (contract_type in ('pt','golf','combo','custom')),
@@ -44,13 +58,22 @@ create table if not exists public.contract_templates (
   title           text not null,
   body_html       text not null,
   agreements_json jsonb not null default '[]'::jsonb,
+  privacy_json    jsonb not null default '{}'::jsonb,
+  refund_policy_json jsonb not null default '{}'::jsonb,
   is_active       boolean not null default true,
   effective_from  timestamptz not null default now(),
   created_at      timestamptz not null default now(),
   unique (contract_type, version)
 );
 
--- 2) 계약 인스턴스 --------------------------------------------------------
+alter table public.contract_templates
+  add column if not exists privacy_json jsonb not null default '{}'::jsonb;
+alter table public.contract_templates
+  add column if not exists refund_policy_json jsonb not null default '{}'::jsonb;
+
+-- ===========================================================================
+-- 2) 계약 인스턴스
+-- ===========================================================================
 create table if not exists public.contracts (
   id                     uuid primary key default gen_random_uuid(),
   template_id            uuid not null references public.contract_templates(id),
@@ -63,6 +86,8 @@ create table if not exists public.contracts (
   business_name          text not null,
   business_owner         text not null,
   business_registration  text,
+  business_address       text,
+  business_phone         text,
   items_json             jsonb not null,
   total_amount           integer not null,
   payment_method         text,
@@ -73,14 +98,39 @@ create table if not exists public.contracts (
   notes                  text,
   sign_token             text not null unique,
   status                 text not null default 'pending'
-                          check (status in ('pending','sent','viewed','signed','expired','canceled')),
+                          check (status in ('pending','sent','viewed','identified','consented','signed','expired','canceled')),
   expires_at             timestamptz not null,
   created_by             uuid references auth.users(id),
   created_at             timestamptz not null default now(),
   sent_at                timestamptz,
   viewed_at              timestamptz,
-  signed_at              timestamptz
+  identity_verified_at   timestamptz,
+  terms_scrolled_at      timestamptz,
+  signed_at              timestamptz,  -- 동의 완료 = legacy 'signed_at'
+  content_hash           text,
+  signer_ip              text,
+  signer_user_agent      text,
+  signer_fingerprint_hash text
 );
+
+-- v1 호환: 기존 필드 그대로 + 새 필드 추가 (idempotent)
+alter table public.contracts add column if not exists business_address text;
+alter table public.contracts add column if not exists business_phone text;
+alter table public.contracts add column if not exists identity_verified_at timestamptz;
+alter table public.contracts add column if not exists terms_scrolled_at timestamptz;
+alter table public.contracts add column if not exists content_hash text;
+alter table public.contracts add column if not exists signer_ip text;
+alter table public.contracts add column if not exists signer_user_agent text;
+alter table public.contracts add column if not exists signer_fingerprint_hash text;
+
+-- status check constraint 갱신 (v1: pending/sent/viewed/signed/expired/canceled)
+do $$
+begin
+  alter table public.contracts drop constraint if exists contracts_status_check;
+  alter table public.contracts add constraint contracts_status_check
+    check (status in ('pending','sent','viewed','identified','consented','signed','expired','canceled'));
+exception when others then null;
+end$$;
 
 create index if not exists contracts_token_idx   on public.contracts(sign_token);
 create index if not exists contracts_status_idx  on public.contracts(status);
@@ -88,19 +138,41 @@ create index if not exists contracts_phone_idx   on public.contracts(member_phon
 create index if not exists contracts_created_idx on public.contracts(created_at desc);
 create index if not exists contracts_branch_idx  on public.contracts(branch);
 
--- 3) 서명 (계약당 1개) ----------------------------------------------------
+-- ===========================================================================
+-- 3) 동의/서명 (계약당 1개)
+--    v2: signature_data_url 옵션화. consent_method 컬럼 추가.
+-- ===========================================================================
 create table if not exists public.contract_signatures (
   contract_id            uuid primary key references public.contracts(id) on delete cascade,
-  signature_data_url     text not null,
+  signature_data_url     text,
+  consent_method         text not null default 'checkbox'
+                          check (consent_method in ('checkbox','handwritten')),
   agreed_items           jsonb not null,
   contract_html_snapshot text not null,
   signer_ip              text,
   signer_user_agent      text,
+  signer_fingerprint_hash text,
   signed_at              timestamptz not null default now(),
   pdf_storage_path       text
 );
 
--- 4) 감사 로그 -----------------------------------------------------------
+alter table public.contract_signatures alter column signature_data_url drop not null;
+alter table public.contract_signatures
+  add column if not exists consent_method text not null default 'checkbox';
+alter table public.contract_signatures
+  add column if not exists signer_fingerprint_hash text;
+
+do $$
+begin
+  alter table public.contract_signatures drop constraint if exists contract_signatures_consent_method_check;
+  alter table public.contract_signatures add constraint contract_signatures_consent_method_check
+    check (consent_method in ('checkbox','handwritten'));
+exception when others then null;
+end$$;
+
+-- ===========================================================================
+-- 4) 감사 로그 (append-only)
+-- ===========================================================================
 create table if not exists public.contract_audit_log (
   id          bigserial primary key,
   contract_id uuid references public.contracts(id) on delete cascade,
@@ -111,9 +183,65 @@ create table if not exists public.contract_audit_log (
   created_at  timestamptz not null default now()
 );
 create index if not exists audit_contract_idx on public.contract_audit_log(contract_id);
+create index if not exists audit_event_idx    on public.contract_audit_log(event_type);
+
+-- audit_log append-only 트리거 (UPDATE/DELETE 차단)
+create or replace function public.audit_log_immutable()
+returns trigger language plpgsql as $$
+begin
+  raise exception 'contract_audit_log is append-only — UPDATE/DELETE 금지';
+end$$;
+
+drop trigger if exists audit_log_no_update on public.contract_audit_log;
+drop trigger if exists audit_log_no_delete on public.contract_audit_log;
+create trigger audit_log_no_update before update on public.contract_audit_log
+  for each row execute function public.audit_log_immutable();
+create trigger audit_log_no_delete before delete on public.contract_audit_log
+  for each row execute function public.audit_log_immutable();
+
+-- consented 후 contracts 변경 차단 트리거
+create or replace function public.contracts_lock_after_consent()
+returns trigger language plpgsql as $$
+begin
+  if (TG_OP = 'UPDATE') then
+    if old.status in ('consented','signed') then
+      if old.id != new.id then
+        raise exception 'contract id 변경 불가';
+      end if;
+      -- 핵심 컨텐츠 변경 차단
+      if old.template_id is distinct from new.template_id
+         or old.member_name is distinct from new.member_name
+         or old.member_phone is distinct from new.member_phone
+         or old.items_json::text is distinct from new.items_json::text
+         or old.total_amount is distinct from new.total_amount
+         or old.content_hash is distinct from new.content_hash
+         or old.signed_at is distinct from new.signed_at then
+        raise exception '서명/동의 완료된 계약의 핵심 내용은 변경할 수 없습니다.';
+      end if;
+    end if;
+  end if;
+  return new;
+end$$;
+
+drop trigger if exists contracts_lock_after_consent_trg on public.contracts;
+create trigger contracts_lock_after_consent_trg
+  before update on public.contracts
+  for each row execute function public.contracts_lock_after_consent();
+
+-- contract_signatures 변경 차단 트리거
+create or replace function public.signatures_immutable()
+returns trigger language plpgsql as $$
+begin
+  raise exception '서명/동의 레코드는 변경할 수 없습니다. (consent_method=% , contract_id=%)',
+    old.consent_method, old.contract_id;
+end$$;
+
+drop trigger if exists signatures_no_update on public.contract_signatures;
+create trigger signatures_no_update before update on public.contract_signatures
+  for each row execute function public.signatures_immutable();
 
 -- ===========================================================================
--- RLS 설정 — 인증 관리자만 직접 접근 가능, 비인증 접근은 RPC 만 허용
+-- RLS — 인증 관리자만 직접 접근. 비인증은 RPC 만 허용
 -- ===========================================================================
 alter table public.contract_templates  enable row level security;
 alter table public.contracts           enable row level security;
@@ -131,7 +259,166 @@ create policy "auth all signatures" on public.contract_signatures for all to aut
 create policy "auth all audit"      on public.contract_audit_log  for all to authenticated using (true) with check (true);
 
 -- ===========================================================================
--- RPC: 회원이 토큰으로 계약 + 약관을 조회 (서명 화면용)
+-- 헬퍼: 요청 IP 추출 (서버사이드)
+-- ===========================================================================
+create or replace function public.request_ip()
+returns text
+language plpgsql
+security definer
+set search_path = public
+as $func$
+declare
+  xff text;
+  cip inet;
+begin
+  begin
+    xff := current_setting('request.headers', true)::json->>'x-forwarded-for';
+  exception when others then xff := null;
+  end;
+  if xff is not null and length(xff) > 0 then
+    return split_part(xff, ',', 1);
+  end if;
+  begin
+    cip := inet_client_addr();
+  exception when others then cip := null;
+  end;
+  return host(cip);
+end;
+$func$;
+grant execute on function public.request_ip() to anon, authenticated;
+
+-- ===========================================================================
+-- RPC: 회원이 토큰으로 계약 열람 (1단계 — 본인확인 전)
+--   계약 기본 메타와 만료/상태만 반환. 실제 계약 내용은 본인확인 후 반환.
+-- ===========================================================================
+create or replace function public.get_contract_intro(p_token text)
+returns json
+language plpgsql
+security definer
+set search_path = public
+as $func$
+declare
+  v_contract public.contracts%rowtype;
+  v_template public.contract_templates%rowtype;
+begin
+  select * into v_contract
+  from public.contracts
+  where sign_token = p_token;
+
+  if not found then
+    return json_build_object('error', 'invalid');
+  end if;
+
+  if v_contract.expires_at < now() then
+    if v_contract.status not in ('signed','consented','canceled') then
+      update public.contracts set status = 'expired'
+       where id = v_contract.id and status not in ('signed','consented','canceled');
+    end if;
+    return json_build_object('error', 'expired',
+      'business_name', v_contract.business_name,
+      'business_phone', v_contract.business_phone);
+  end if;
+
+  if v_contract.status in ('consented','signed') then
+    return json_build_object('error', 'already_signed',
+      'contract_id', v_contract.id,
+      'signed_at', v_contract.signed_at);
+  end if;
+
+  if v_contract.viewed_at is null then
+    update public.contracts
+       set status = case when status in ('pending','sent') then 'viewed' else status end,
+           viewed_at = now()
+     where id = v_contract.id;
+    insert into public.contract_audit_log(contract_id, event_type, ip)
+    values (v_contract.id, 'link_viewed', public.request_ip());
+    v_contract.viewed_at := now();
+  end if;
+
+  select * into v_template
+  from public.contract_templates
+  where id = v_contract.template_id;
+
+  return json_build_object(
+    'business_name',    v_contract.business_name,
+    'business_phone',   v_contract.business_phone,
+    'member_name_masked', regexp_replace(v_contract.member_name, '^(.).+$', '\1**'),
+    'expires_at',       v_contract.expires_at,
+    'template_title',   v_template.title,
+    'template_version', v_template.version
+  );
+end;
+$func$;
+grant execute on function public.get_contract_intro(text) to anon, authenticated;
+
+-- ===========================================================================
+-- RPC: 본인확인 (이름 + 생년월일 + 휴대폰 끝 4자리)
+-- ===========================================================================
+create or replace function public.verify_identity(
+  p_token text,
+  p_name text,
+  p_birth date,
+  p_phone_last4 text
+)
+returns json
+language plpgsql
+security definer
+set search_path = public
+as $func$
+declare
+  v_contract public.contracts%rowtype;
+  v_match    boolean;
+  v_attempts int;
+begin
+  select * into v_contract
+  from public.contracts
+  where sign_token = p_token
+    and status in ('pending','sent','viewed','identified')
+    and expires_at > now()
+  for update;
+
+  if not found then
+    return json_build_object('error','invalid_or_expired');
+  end if;
+
+  -- Rate limit: 같은 token + ip 에서 5분 내 5회 실패 시 차단
+  select count(*) into v_attempts
+  from public.contract_audit_log
+  where contract_id = v_contract.id
+    and event_type = 'identity_failed'
+    and created_at > now() - interval '5 minutes';
+  if v_attempts >= 5 then
+    return json_build_object('error','too_many_attempts');
+  end if;
+
+  v_match :=
+       (trim(v_contract.member_name) = trim(p_name))
+    and (v_contract.member_birth is not null and v_contract.member_birth = p_birth)
+    and (right(regexp_replace(v_contract.member_phone, '[^0-9]', '', 'g'), 4) = p_phone_last4);
+
+  if not v_match then
+    insert into public.contract_audit_log(contract_id, event_type, event_data, ip)
+    values (v_contract.id, 'identity_failed',
+            jsonb_build_object('name_match', trim(v_contract.member_name) = trim(p_name)),
+            public.request_ip());
+    return json_build_object('error','identity_mismatch');
+  end if;
+
+  update public.contracts
+     set status = case when status = 'consented' then status else 'identified' end,
+         identity_verified_at = coalesce(identity_verified_at, now())
+   where id = v_contract.id;
+
+  insert into public.contract_audit_log(contract_id, event_type, ip)
+  values (v_contract.id, 'identity_verified', public.request_ip());
+
+  return json_build_object('ok', true);
+end;
+$func$;
+grant execute on function public.verify_identity(text,text,date,text) to anon, authenticated;
+
+-- ===========================================================================
+-- RPC: 본인확인 후 계약 전체 조회
 -- ===========================================================================
 create or replace function public.get_contract_for_signing(p_token text)
 returns json
@@ -146,23 +433,14 @@ begin
   select * into v_contract
   from public.contracts
   where sign_token = p_token
-    and status in ('pending','sent','viewed')
+    and status in ('identified','viewed','sent','pending')
     and expires_at > now();
   if not found then
     return json_build_object('error', 'invalid_or_expired');
   end if;
 
-  if v_contract.viewed_at is null then
-    update public.contracts
-       set status = case when status = 'pending' then 'viewed'
-                         when status = 'sent'    then 'viewed'
-                         else status end,
-           viewed_at = now()
-     where id = v_contract.id;
-    insert into public.contract_audit_log(contract_id, event_type)
-    values (v_contract.id, 'link_viewed');
-    v_contract.status := 'viewed';
-    v_contract.viewed_at := now();
+  if v_contract.identity_verified_at is null then
+    return json_build_object('error', 'identity_required');
   end if;
 
   select * into v_template
@@ -178,7 +456,175 @@ $func$;
 grant execute on function public.get_contract_for_signing(text) to anon, authenticated;
 
 -- ===========================================================================
--- RPC: 회원이 서명 제출
+-- RPC: 회원 이벤트 로그 (스크롤/체크 등)
+-- ===========================================================================
+create or replace function public.log_contract_event(
+  p_token      text,
+  p_event_type text,
+  p_event_data jsonb default '{}'::jsonb,
+  p_user_agent text default null,
+  p_fingerprint_hash text default null
+)
+returns json
+language plpgsql
+security definer
+set search_path = public
+as $func$
+declare
+  v_contract public.contracts%rowtype;
+  v_allowed  text[] := array[
+    'terms_scrolled','terms_top','terms_section_viewed',
+    'consent_checked','consent_unchecked','consent_all_checked',
+    'identity_attempt','pdf_viewed','pdf_downloaded',
+    'page_unload','reopen','client_error'
+  ];
+begin
+  if not (p_event_type = any(v_allowed)) then
+    return json_build_object('error','unsupported_event');
+  end if;
+
+  select * into v_contract from public.contracts where sign_token = p_token;
+  if not found then return json_build_object('error','invalid'); end if;
+
+  insert into public.contract_audit_log(contract_id, event_type, event_data, ip, user_agent)
+  values (v_contract.id, p_event_type, p_event_data, public.request_ip(), p_user_agent);
+
+  if p_event_type = 'terms_scrolled' and v_contract.terms_scrolled_at is null then
+    update public.contracts set terms_scrolled_at = now() where id = v_contract.id;
+  end if;
+
+  if p_fingerprint_hash is not null and v_contract.signer_fingerprint_hash is null then
+    update public.contracts set signer_fingerprint_hash = p_fingerprint_hash
+     where id = v_contract.id;
+  end if;
+
+  return json_build_object('ok', true);
+end;
+$func$;
+grant execute on function public.log_contract_event(text,text,jsonb,text,text) to anon, authenticated;
+
+-- ===========================================================================
+-- RPC: 최종 동의 제출 (체크박스 기반)
+--   - 서버측에서 template body_html 다시 읽어 스냅샷 재구성 (변조 차단)
+--   - content_hash = SHA-256(template + items + total + agreed_items + phone)
+--   - IP / UA / fingerprint 자동 기록
+-- ===========================================================================
+create or replace function public.submit_consent(
+  p_token              text,
+  p_agreed_items       jsonb,
+  p_user_agent         text,
+  p_fingerprint_hash   text default null
+)
+returns json
+language plpgsql
+security definer
+set search_path = public
+as $func$
+declare
+  v_contract  public.contracts%rowtype;
+  v_template  public.contract_templates%rowtype;
+  v_required  jsonb;
+  v_missing   text;
+  v_snapshot  text;
+  v_hash      text;
+  v_ip        text;
+begin
+  select * into v_contract
+  from public.contracts
+  where sign_token = p_token
+    and status in ('identified')
+    and expires_at > now()
+  for update;
+
+  if not found then
+    return json_build_object('error','invalid_or_unauthorized');
+  end if;
+
+  if v_contract.identity_verified_at is null then
+    return json_build_object('error','identity_required');
+  end if;
+
+  select * into v_template
+  from public.contract_templates
+  where id = v_contract.template_id;
+
+  -- 필수 동의 항목 검증 (서버측에서 한 번 더 확인)
+  for v_required in
+    select jsonb_array_elements(v_template.agreements_json)
+  loop
+    if (v_required->>'required')::boolean is true then
+      if coalesce((p_agreed_items->>(v_required->>'key'))::boolean, false) is not true then
+        v_missing := v_required->>'key';
+        return json_build_object('error','required_consent_missing','missing_key', v_missing);
+      end if;
+    end if;
+  end loop;
+
+  -- 서버측 스냅샷 재구성: template 본문 + 동의 항목 라벨 + 결과
+  v_snapshot :=
+    '<div class="contract-snapshot">' ||
+    '<div class="terms-body">' || v_template.body_html || '</div>' ||
+    '<h3>동의 항목</h3><ul>';
+  for v_required in select jsonb_array_elements(v_template.agreements_json) loop
+    v_snapshot := v_snapshot ||
+      '<li>' ||
+      case when coalesce((p_agreed_items->>(v_required->>'key'))::boolean, false)
+           then '☑ ' else '☐ ' end ||
+      case when (v_required->>'required')::boolean is true then '[필수] ' else '[선택] ' end ||
+      coalesce(v_required->>'label','') ||
+      '</li>';
+  end loop;
+  v_snapshot := v_snapshot || '</ul></div>';
+
+  -- content_hash 계산
+  v_hash := encode(
+    digest(
+      coalesce(v_contract.template_id::text,'') || '|' ||
+      coalesce(v_template.version,'') || '|' ||
+      coalesce(v_contract.items_json::text,'') || '|' ||
+      coalesce(v_contract.total_amount::text,'') || '|' ||
+      coalesce(v_contract.member_phone,'') || '|' ||
+      coalesce(v_contract.member_name,'') || '|' ||
+      coalesce(p_agreed_items::text,'')
+      , 'sha256'),
+    'hex');
+
+  v_ip := public.request_ip();
+
+  insert into public.contract_signatures(
+    contract_id, consent_method, agreed_items,
+    contract_html_snapshot,
+    signer_ip, signer_user_agent, signer_fingerprint_hash
+  ) values (
+    v_contract.id, 'checkbox', p_agreed_items,
+    v_snapshot,
+    v_ip, p_user_agent, p_fingerprint_hash
+  )
+  on conflict (contract_id) do nothing;
+
+  update public.contracts
+     set status = 'signed',
+         signed_at = now(),
+         content_hash = v_hash,
+         signer_ip = coalesce(signer_ip, v_ip),
+         signer_user_agent = coalesce(signer_user_agent, p_user_agent),
+         signer_fingerprint_hash = coalesce(signer_fingerprint_hash, p_fingerprint_hash)
+   where id = v_contract.id;
+
+  insert into public.contract_audit_log(contract_id, event_type, event_data, ip, user_agent)
+  values (v_contract.id, 'consented',
+          jsonb_build_object('content_hash', v_hash, 'agreed', p_agreed_items),
+          v_ip, p_user_agent);
+
+  return json_build_object('ok', true,
+                           'contract_id', v_contract.id,
+                           'content_hash', v_hash);
+end;
+$func$;
+grant execute on function public.submit_consent(text,jsonb,text,text) to anon, authenticated;
+
+-- ===========================================================================
+-- (legacy) RPC: 손글씨 서명 제출 — v2 에서는 비활성 권장. 호환 위해 유지
 -- ===========================================================================
 create or replace function public.submit_signature(
   p_token                 text,
@@ -193,48 +639,16 @@ security definer
 set search_path = public
 as $func$
 declare
-  v_id uuid;
+  v_result json;
 begin
-  select id into v_id
-  from public.contracts
-  where sign_token = p_token
-    and status in ('pending','sent','viewed')
-    and expires_at > now()
-  for update;
-
-  if v_id is null then
-    return json_build_object('error','invalid_or_expired');
-  end if;
-
-  insert into public.contract_signatures(
-    contract_id, signature_data_url, agreed_items,
-    contract_html_snapshot, signer_user_agent
-  ) values (
-    v_id, p_signature_data_url, p_agreed_items,
-    p_contract_html_snapshot, p_signer_user_agent
-  )
-  on conflict (contract_id) do update set
-    signature_data_url     = excluded.signature_data_url,
-    agreed_items           = excluded.agreed_items,
-    contract_html_snapshot = excluded.contract_html_snapshot,
-    signer_user_agent      = excluded.signer_user_agent,
-    signed_at              = now();
-
-  update public.contracts
-     set status = 'signed',
-         signed_at = now()
-   where id = v_id;
-
-  insert into public.contract_audit_log(contract_id, event_type, user_agent)
-  values (v_id, 'signed', p_signer_user_agent);
-
-  return json_build_object('ok', true, 'contract_id', v_id);
+  v_result := public.submit_consent(p_token, p_agreed_items, p_signer_user_agent, null);
+  return v_result;
 end;
 $func$;
 grant execute on function public.submit_signature(text,text,jsonb,text,text) to anon, authenticated;
 
 -- ===========================================================================
--- RPC: 서명 완료 계약 조회 (회원은 토큰, 관리자는 인증으로)
+-- RPC: 서명 완료 계약 조회 (회원은 토큰, 관리자는 인증)
 -- ===========================================================================
 create or replace function public.get_signed_contract(p_id uuid, p_token text default null)
 returns json
@@ -247,6 +661,7 @@ declare
   v_template  public.contract_templates%rowtype;
   v_sig       public.contract_signatures%rowtype;
   v_authed    boolean := auth.uid() is not null;
+  v_events    json;
 begin
   select * into v_contract from public.contracts where id = p_id;
   if not found then
@@ -262,18 +677,35 @@ begin
   select * into v_template from public.contract_templates where id = v_contract.template_id;
   select * into v_sig      from public.contract_signatures where contract_id = p_id;
 
+  -- 회원이 view 페이지 열람한 사실 로깅
+  if not v_authed then
+    insert into public.contract_audit_log(contract_id, event_type, ip)
+    values (p_id, 'pdf_viewed', public.request_ip());
+  end if;
+
+  -- 감사 이벤트 (관리자에게만 노출)
+  if v_authed then
+    select coalesce(json_agg(json_build_object(
+      'event_type', event_type,
+      'event_data', event_data,
+      'ip', ip,
+      'created_at', created_at
+    ) order by created_at), '[]'::json) into v_events
+    from public.contract_audit_log where contract_id = p_id;
+  end if;
+
   return json_build_object(
     'contract',  row_to_json(v_contract),
     'template',  row_to_json(v_template),
-    'signature', case when v_sig.contract_id is null then null else row_to_json(v_sig) end
+    'signature', case when v_sig.contract_id is null then null else row_to_json(v_sig) end,
+    'audit_events', v_events
   );
 end;
 $func$;
 grant execute on function public.get_signed_contract(uuid, text) to anon, authenticated;
 
 -- ===========================================================================
--- 만료 처리 — Supabase Cron 또는 수동 실행
---   select public.expire_old_contracts();
+-- 만료 처리
 -- ===========================================================================
 create or replace function public.expire_old_contracts()
 returns integer
@@ -285,7 +717,7 @@ declare v_count int;
 begin
   update public.contracts
      set status = 'expired'
-   where status in ('pending','sent','viewed')
+   where status in ('pending','sent','viewed','identified')
      and expires_at < now();
   get diagnostics v_count = row_count;
   return v_count;
@@ -294,12 +726,33 @@ $func$;
 grant execute on function public.expire_old_contracts() to authenticated;
 
 -- ===========================================================================
--- 시드 약관 — 첨부 .pptx (250725, 260428) 두 버전 반영
+-- 관리자용 통계 뷰
+-- ===========================================================================
+create or replace view public.contracts_stats_monthly as
+select
+  date_trunc('month', created_at)::date as month,
+  branch,
+  count(*)                                            as total,
+  count(*) filter (where status='signed')             as signed,
+  count(*) filter (where status='viewed')             as viewed,
+  count(*) filter (where status='sent')               as sent,
+  count(*) filter (where status='expired')            as expired,
+  sum(total_amount) filter (where status='signed')    as signed_amount
+from public.contracts
+group by 1,2
+order by 1 desc, 2;
+
+grant select on public.contracts_stats_monthly to authenticated;
+
+-- ===========================================================================
+-- 시드 약관 v2 — PIPA 분리동의 / 방문판매법 / 표준약관 준수
 -- ===========================================================================
 
--- (1) PT + 골프 통합 (2026-04-28 최신)
-insert into public.contract_templates (contract_type, version, title, body_html, agreements_json)
-values ('combo', '2026-04-28', '내셔널짐 PT & 골프 이용 계약서',
+-- 기존 시드 ON CONFLICT DO NOTHING 이므로 새 버전은 다른 version 으로 추가
+-- 새 버전: 2026-05-19 (Enterprise v2 — 분리동의 + 중도해지권 + 환불공식 명시)
+
+insert into public.contract_templates (contract_type, version, title, body_html, agreements_json, privacy_json, refund_policy_json)
+values ('combo', '2026-05-19', '내셔널짐 PT & 골프 이용 계약서',
 $tpl$
 <p><b>NATIONAL GYM PT &amp; GOLF</b> 이용 약관입니다. 본 계약은 내셔널짐(개인사업자, 이하 "센터")과 회원 사이에 체결됩니다.</p>
 
@@ -338,50 +791,73 @@ $tpl$
 </table>
 <p>유효기간 내 홀딩 가능 횟수: 10회권 1회, 20회 · 30회권은 2회. (1개월권은 1회, 그 외 이용권은 2회)</p>
 
-<h3>3. 환불 및 양도, 업그레이드</h3>
+<h3 class="hl-refund">3. 환불 · 양도 · 업그레이드 <span class="hl-tag">중요</span></h3>
+<p class="hl-box">본 조항은 「방문판매 등에 관한 법률」 제31조(계속거래의 해지)에 의거 회원이 언제든 중도 해지할 수 있는 권리를 명시합니다. 「체력단련장 이용 표준약관」(공정거래위원회 제10095호)에 따라 환불액 계산에는 <b>정상가(할인가 아님)</b>가 사용되며, <b>위약금은 결제금액의 10%를 초과할 수 없습니다</b>.</p>
 <ol>
 <li>최초 등록 후 3회 이용 시점까지 업그레이드 신청이 가능하며, 차액을 납부하여 변경할 수 있습니다.</li>
-<li>원칙상 환불은 불가하나 불가피한 사유가 발생한 경우 증빙 서류 제출 및 센터 승인을 통해 소비자 피해 보상 규정에 따라 환불 처리됩니다.</li>
-<li><b>환불 공제금액</b>: 결제금액 − 위약금 10% − 카드 수수료 5% − 사은품 및 서비스 공제
+<li><b>환불 공식</b>: 환불액 = 결제금액 − (이용 일수/회차 × 정상가) − 위약금(결제금액의 10% 이내) − 카드 수수료(실비) − 사은품 가액
   <ul>
     <li>(타석 이용권) 등록일부터 해지일까지의 날짜 × 1회 이용료 35,000원</li>
     <li>(레슨 / PT 이용권) 1회 정상가 × 이용횟수</li>
   </ul>
 </li>
-<li>양도는 30일 이상 잔여기간이 남아있을 때에 한하여 1회만 가능하며 양도수수료는 5만원이 발생됩니다. 단, 1회 양도 이후 환불 / 재양도 / 휴회 적용이 불가합니다. (본 센터에서는 양도를 주선하거나 소개하지 않습니다.)</li>
+<li>양도는 30일 이상 잔여기간이 남아있을 때에 한하여 1회만 가능하며 양도수수료는 5만원이 발생합니다. 단, 1회 양도 이후 환불 / 재양도 / 휴회 적용이 불가합니다. (본 센터에서는 양도를 주선하거나 소개하지 않습니다.)</li>
+<li>중도 해지 의사는 센터 안내데스크 또는 대표 연락처로 통보할 수 있으며, 통보일을 기준으로 환불액이 산정됩니다.</li>
 </ol>
 
-<h3>4. 개인정보의 처리</h3>
+<h3>4. 개인정보 처리 안내</h3>
 <ul>
-<li><b>수집 항목</b>: 이름, 휴대폰번호, 생년월일, 주소, 결제정보</li>
-<li><b>이용 목적</b>: 회원 관리, 서비스 제공, 예약 · 결제 처리, 안전사고 대응</li>
-<li><b>보유 기간</b>: 회원 자격 유지기간 및 관계법령에 따른 보존기간 (전자상거래법 5년 등)</li>
-<li><b>제3자 제공</b>: 결제대행사 · 세무 신고를 위한 최소 정보 외 제공하지 않음</li>
+<li><b>수집 항목</b>: 이름, 휴대폰번호, 생년월일, 주소(선택), 이메일(선택), 결제정보</li>
+<li><b>이용 목적</b>: 회원 관리, 서비스 제공, 예약 · 결제 처리, 안전사고 대응, 분쟁 시 증빙</li>
+<li><b>민감정보</b>(건강상태): 안전한 트레이닝 진행을 위한 부상·질환 정보(자발적 고지 항목)</li>
+<li><b>제3자 제공</b>: 결제대행사(카드사) · 세무 신고 외에는 제공하지 않으며, 마케팅 목적 제3자 제공 없음</li>
+<li><b>보유 기간</b>: 「전자상거래법」 제6조에 따라 계약·청약·대금결제 기록 <b>5년</b>, 소비자 분쟁처리 기록 <b>3년</b>. 회원자격 종료 시 위 법정 보유기간 이후 안전하게 파기.</li>
+<li><b>동의 거부 권리</b>: 필수 항목 외 거부 가능. 단, 필수 항목 미동의 시 계약 체결 불가.</li>
+<li><b>동의 철회 권리</b>: 언제든 센터 연락처로 철회 요청 가능 (단, 법정 보유기간 내 정보는 보존됨).</li>
 </ul>
-<p style="color:#666;font-size:12px">본 약관 시행일: 2026년 4월 28일</p>
+
+<h3>5. 분쟁 해결</h3>
+<p>본 계약과 관련된 분쟁은 우선 당사자 간 협의로 해결하며, 협의가 이루어지지 않을 경우 「소비자기본법」 제57조에 따른 한국소비자원 분쟁조정 또는 관할 법원에 의한 해결을 따릅니다.</p>
+
+<p style="color:#666;font-size:12px">본 약관 시행일: 2026년 5월 19일 / 표준약관 제10095호 준용</p>
 $tpl$,
 $ag$[
-{"key":"terms","label":"위 PT & 골프 이용 약관 전문에 동의합니다.","required":true},
-{"key":"refund","label":"환불 및 양도 규정(위약금 10%, 카드수수료 5%, 회당 정상가 공제 등)을 충분히 이해하였으며 이에 동의합니다.","required":true},
-{"key":"privacy","label":"서비스 제공·회원관리를 위한 개인정보(이름·연락처·생년월일·주소) 수집·이용에 동의합니다.","required":true},
-{"key":"health","label":"본인의 건강상태(질환·부상 등)에 대해 사실대로 고지하였으며, 운동 중 발생할 수 있는 위험을 인지하고 있음을 확인합니다.","required":true},
-{"key":"single_use","label":"(골프) 골프 타석은 회원 1인 단독 이용이 원칙임을 확인합니다.","required":false},
-{"key":"locker","label":"사물함 이용료 및 만료 후 보관·폐기 규정을 확인하였습니다.","required":false},
-{"key":"marketing","label":"(선택) 마케팅·이벤트·프로모션 정보 수신에 동의합니다.","required":false}
-]$ag$::jsonb)
+{"key":"terms","label":"위 이용 약관 전문(회원 준수사항·유효기간·홀딩 규정)에 동의합니다.","required":true,"group":"core"},
+{"key":"refund","label":"환불·양도 규정(정상가 일할 환불, 위약금 10% 한도) 및 중도해지 권리(방문판매법 §31)를 충분히 이해하였으며 이에 동의합니다.","required":true,"group":"core"},
+{"key":"privacy","label":"개인정보(이름·연락처·생년월일·주소·결제정보)의 수집·이용에 동의합니다. (필수, 보유 5년, 거부 시 계약 불가)","required":true,"group":"privacy"},
+{"key":"privacy_third","label":"결제대행사·세무신고 등 법정 의무 이행을 위한 최소 정보의 제3자 제공에 동의합니다.","required":true,"group":"privacy"},
+{"key":"health","label":"운동 중 발생 가능한 위험을 인지하였으며, 본인의 건강상태(질환·부상 등 민감정보)를 사실대로 고지하였음을 확인합니다.","required":true,"group":"sensitive"},
+{"key":"single_use","label":"(골프) 골프 타석은 회원 1인 단독 이용이 원칙임을 확인합니다.","required":false,"group":"facility"},
+{"key":"locker","label":"사물함 이용료 및 만료 후 보관·폐기 규정을 확인하였습니다.","required":false,"group":"facility"},
+{"key":"marketing","label":"(선택) 마케팅·이벤트·프로모션 정보 수신(카카오톡/SMS)에 동의합니다.","required":false,"group":"marketing"}
+]$ag$::jsonb,
+$pj$ {
+  "items": ["이름","휴대폰번호","생년월일","주소(선택)","이메일(선택)","결제정보","건강상태(민감정보)"],
+  "purpose": "회원 관리·서비스 제공·예약/결제 처리·안전사고 대응·분쟁 시 증빙",
+  "retention": "전자상거래법 §6에 따라 계약·결제 기록 5년, 분쟁처리 3년",
+  "third_party": ["결제대행사(카드사)","세무신고 대행"],
+  "marketing_retention": "서비스 종료일로부터 1년"
+} $pj$::jsonb,
+$rp$ {
+  "max_penalty_pct": 10,
+  "penalty_base": "결제금액",
+  "unit_price_basis": "정상가",
+  "deductions": ["이용 회차/일수 × 정상가","위약금(결제금액 10% 이내)","카드수수료 실비","사은품 가액"],
+  "legal_basis": ["방문판매법 §31","공정위 표준약관 제10095호","전자상거래법 §6"]
+} $rp$::jsonb)
 on conflict (contract_type, version) do nothing;
 
--- (2) PT 단독 (2025-07-25 버전 기반)
-insert into public.contract_templates (contract_type, version, title, body_html, agreements_json)
-values ('pt', '2025-07-25', '내셔널짐 PT 이용 계약서',
+-- (2) PT 단독 v2
+insert into public.contract_templates (contract_type, version, title, body_html, agreements_json, privacy_json, refund_policy_json)
+values ('pt', '2026-05-19', '내셔널짐 PT 이용 계약서',
 $tpl$
 <p>본 계약은 내셔널짐(개인사업자, 이하 "센터")과 회원 사이의 PT(퍼스널 트레이닝) 이용에 관한 사항을 규정합니다.</p>
 
 <h3>1. 회원 준수사항</h3>
 <ol>
-<li>내셔널짐 회원은 레슨 유효기간 및 예약 일자 · 시간을 엄수하여 기간 내 사용하여야 합니다. 운영시간 및 휴무일은 센터 공지에 따릅니다.</li>
+<li>회원은 레슨 유효기간 및 예약 일자 · 시간을 엄수하여 기간 내 사용하여야 합니다. 운영시간 및 휴무일은 센터 공지에 따릅니다.</li>
 <li>예약 변경은 최소 12시간 전까지 가능하며, 당일 취소 또는 무단 결석 시 해당 레슨은 진행된 것으로 간주합니다.</li>
-<li>센터의 제반시설 이용 중 발생한 불가항력적 사유, 센터 측에 사전 통보되지 않은 질병, 본인의 과실 또는 귀책 사유로 인한 사고 시 본 센터는 책임을 지지 않습니다.</li>
+<li>센터의 제반시설 이용 중 발생한 불가항력적 사유, 사전 통보되지 않은 질병, 본인의 과실 또는 귀책 사유로 인한 사고 시 본 센터는 책임을 지지 않습니다.</li>
 <li>귀중품은 안내 데스크에 보관하여야 하며, 보관하지 않은 개인 물품의 분실 · 멸실 · 훼손에 대해서는 회원 본인이 책임을 집니다.</li>
 <li>개인 사물함 이용기간이 만료된 후에도 남아있는 물품은 센터 측에서 회수 후 7일간 보관하며 이후에는 임의 폐기할 수 있습니다. 개인 사물함 비용은 1개월당 1만원이며, 환불 시 공제되지 않습니다.</li>
 <li>회원의 안전 및 원활한 센터 이용을 위해 본 약관과 운영규정을 위반하거나 전염병 · 풍기문란 · 사고 및 영업에 방해를 끼치는 모든 행위로 질서 유지에 지장을 초래한 경우 회원의 권리를 제한 · 박탈합니다.</li>
@@ -390,57 +866,91 @@ $tpl$
 <li>센터 혹은 담당 트레이너의 사정으로 레슨이 불가능할 시 다른 트레이너로 변경될 수 있으며, 이는 환불의 사유에 해당하지 않습니다.</li>
 </ol>
 
-<h3>2. 유효기간 및 개인 운동 기간</h3>
+<h3>2. 유효기간 및 홀딩</h3>
 <table>
-<thead><tr><th>레슨 횟수</th><th>유효기간</th></tr></thead>
+<thead><tr><th>레슨 횟수</th><th>유효기간</th><th>홀딩 기간</th><th>홀딩 횟수</th></tr></thead>
 <tbody>
-<tr><td>10회</td><td>40일</td></tr>
-<tr><td>20회</td><td>80일</td></tr>
-<tr><td>30회</td><td>120일</td></tr>
+<tr><td>10회</td><td>40일</td><td>최대 7일</td><td>1회</td></tr>
+<tr><td>20회</td><td>80일</td><td>최대 21일</td><td>2회</td></tr>
+<tr><td>30회</td><td>120일</td><td>최대 30일</td><td>2회</td></tr>
 </tbody>
 </table>
 
-<h3>3. 홀딩 기간</h3>
+<h3 class="hl-refund">3. 환불 · 양도 <span class="hl-tag">중요</span></h3>
+<p class="hl-box">「방문판매법」 제31조에 따라 회원은 언제든 중도해지가 가능하며, 「체력단련장 이용 표준약관」(공정위 제10095호)에 따라 환불액 계산 시 <b>정상가 기준</b>으로 산정합니다. <b>위약금은 결제금액의 10%를 초과할 수 없습니다</b>.</p>
 <ul>
-<li>이용권 홀딩 기간은 최대 10회 7일, 20회 21일, 30회 30일입니다.</li>
-<li>유효기간 내 10회는 1회, 20회 및 30회는 2회에 한 해 홀딩 요청이 가능합니다.</li>
-</ul>
-
-<h3>4. 환불 및 양도</h3>
-<ul>
-<li>원칙상 환불은 불가하나 불가피한 사유가 발생한 경우 증빙 서류 제출 및 센터 승인을 통해 소비자 피해 보상 규정에 따라 환불 처리됩니다.</li>
-<li><b>환불 공제금액</b>: 결제금액 − 위약금 10% − 카드 수수료 5% − (1회 정상가 × 이용횟수) − 사은품 및 서비스 공제</li>
-<li>양도는 30일 이상 잔여기간이 남아있을 때에 한하여 1회만 가능하며 양도수수료는 5만원이 발생됩니다. (단, 1회 양도 이후 환불 / 재양도 / 휴회 적용 불가)</li>
+<li><b>환불 공식</b>: 환불액 = 결제금액 − (1회 정상가 × 이용횟수) − 위약금(결제금액 10% 이내) − 카드 수수료(실비) − 사은품 가액</li>
+<li>양도는 30일 이상 잔여기간이 남아있을 때에 한하여 1회만 가능하며 양도수수료는 5만원입니다. (1회 양도 이후 환불 / 재양도 / 휴회 불가)</li>
 <li>본 센터에서는 양도를 주선하거나 소개하지 않습니다.</li>
 </ul>
 
-<h3>5. 개인정보 처리</h3>
-<p>수집 항목: 이름 · 휴대폰 · 생년월일 · 주소 · 결제정보 / 이용 목적: 회원관리 · 서비스 제공 · 예약 처리 / 보유 기간: 회원 자격 유지기간 및 관계법령 보존기간.</p>
+<h3>4. 개인정보 처리</h3>
+<ul>
+<li>수집 항목: 이름·휴대폰·생년월일·주소(선택)·결제정보·건강상태(민감)</li>
+<li>이용 목적: 회원관리·서비스 제공·예약/결제 처리·안전사고 대응·분쟁 증빙</li>
+<li>보유 기간: 전자상거래법 §6 (5년/3년) 적용, 이후 안전 파기</li>
+<li>동의 거부 권리: 필수 외 거부 가능 / 동의 철회 가능 (법정 보유기간 내 정보는 보존)</li>
+</ul>
 
-<p style="color:#666;font-size:12px">본 약관 시행일: 2025년 7월 25일</p>
+<h3>5. 분쟁 해결</h3>
+<p>분쟁 시 한국소비자원 분쟁조정 또는 관할 법원의 판결에 따릅니다.</p>
+
+<p style="color:#666;font-size:12px">본 약관 시행일: 2026년 5월 19일 / 표준약관 제10095호 준용</p>
 $tpl$,
 $ag$[
-{"key":"terms","label":"위 PT 이용 약관 전문에 동의합니다.","required":true},
-{"key":"refund","label":"환불 및 양도 규정을 충분히 이해하였으며 이에 동의합니다.","required":true},
-{"key":"privacy","label":"서비스 제공·회원관리를 위한 개인정보 수집·이용에 동의합니다.","required":true},
-{"key":"health","label":"본인의 건강상태에 대해 사실대로 고지하였음을 확인합니다.","required":true},
-{"key":"marketing","label":"(선택) 마케팅 및 이벤트 정보 수신에 동의합니다.","required":false}
-]$ag$::jsonb)
+{"key":"terms","label":"위 PT 이용 약관 전문에 동의합니다.","required":true,"group":"core"},
+{"key":"refund","label":"환불·양도 규정 및 방문판매법 §31 중도해지권을 확인하였으며 이에 동의합니다.","required":true,"group":"core"},
+{"key":"privacy","label":"개인정보(이름·연락처·생년월일·결제정보) 수집·이용에 동의합니다. (필수, 보유 5년)","required":true,"group":"privacy"},
+{"key":"privacy_third","label":"결제대행사·세무신고 등 법정 의무 이행을 위한 최소 정보의 제3자 제공에 동의합니다.","required":true,"group":"privacy"},
+{"key":"health","label":"운동 중 발생 가능한 위험을 인지하였으며, 본인의 건강상태를 사실대로 고지하였음을 확인합니다.","required":true,"group":"sensitive"},
+{"key":"marketing","label":"(선택) 마케팅·이벤트 정보 수신(카카오톡/SMS)에 동의합니다.","required":false,"group":"marketing"}
+]$ag$::jsonb,
+$pj$ {
+  "items":["이름","휴대폰번호","생년월일","주소(선택)","결제정보","건강상태(민감정보)"],
+  "purpose":"회원 관리·서비스 제공·예약/결제·안전사고 대응·분쟁 증빙",
+  "retention":"전자상거래법 §6에 따라 5년 / 분쟁 3년",
+  "third_party":["결제대행사","세무신고 대행"]
+} $pj$::jsonb,
+$rp$ {
+  "max_penalty_pct":10,
+  "penalty_base":"결제금액",
+  "unit_price_basis":"정상가",
+  "deductions":["1회 정상가 × 이용횟수","위약금(10%이내)","카드수수료 실비","사은품"]
+} $rp$::jsonb)
 on conflict (contract_type, version) do nothing;
 
--- (3) 골프 단독 (2026-04-28) — combo 본문 재사용, 동의항목만 골프 위주
-insert into public.contract_templates (contract_type, version, title, body_html, agreements_json)
-values ('golf', '2026-04-28', '내셔널짐 골프 레슨 및 이용권 계약서',
-(select body_html from public.contract_templates where contract_type='combo' and version='2026-04-28'),
+-- (3) 골프 단독 v2
+insert into public.contract_templates (contract_type, version, title, body_html, agreements_json, privacy_json, refund_policy_json)
+values ('golf', '2026-05-19', '내셔널짐 골프 레슨 및 이용권 계약서',
+(select body_html from public.contract_templates where contract_type='combo' and version='2026-05-19'),
 $ag$[
-{"key":"terms","label":"위 골프 레슨 및 이용권 약관 전문에 동의합니다.","required":true},
-{"key":"refund","label":"환불 및 양도 규정(타석 1회 이용료 35,000원 공제 등)을 충분히 이해하였으며 이에 동의합니다.","required":true},
-{"key":"privacy","label":"서비스 제공·회원관리를 위한 개인정보 수집·이용에 동의합니다.","required":true},
-{"key":"single_use","label":"골프 타석은 회원 1인 단독 이용이 원칙임을 확인합니다.","required":true},
-{"key":"locker","label":"골프 사물함 이용료(상단 2만원/하단 3만원) 및 보관·폐기 규정을 확인하였습니다.","required":false},
-{"key":"marketing","label":"(선택) 마케팅 및 이벤트 정보 수신에 동의합니다.","required":false}
-]$ag$::jsonb)
+{"key":"terms","label":"위 골프 레슨 및 이용권 약관 전문에 동의합니다.","required":true,"group":"core"},
+{"key":"refund","label":"환불·양도 규정(타석 1회 35,000원 일할 환불, 위약금 10% 한도) 및 중도해지권을 확인하였으며 동의합니다.","required":true,"group":"core"},
+{"key":"privacy","label":"개인정보 수집·이용에 동의합니다. (필수, 보유 5년)","required":true,"group":"privacy"},
+{"key":"privacy_third","label":"결제대행사·세무신고 등 법정 의무 제3자 제공에 동의합니다.","required":true,"group":"privacy"},
+{"key":"single_use","label":"골프 타석은 회원 1인 단독 이용이 원칙임을 확인합니다.","required":true,"group":"facility"},
+{"key":"locker","label":"골프 사물함 이용료(상단 2만원/하단 3만원) 및 보관·폐기 규정을 확인하였습니다.","required":false,"group":"facility"},
+{"key":"marketing","label":"(선택) 마케팅·이벤트 정보 수신에 동의합니다.","required":false,"group":"marketing"}
+]$ag$::jsonb,
+$pj$ {
+  "items":["이름","휴대폰번호","생년월일","주소(선택)","결제정보"],
+  "purpose":"회원 관리·서비스 제공·예약/결제·안전사고 대응·분쟁 증빙",
+  "retention":"전자상거래법 §6에 따라 5년 / 분쟁 3년",
+  "third_party":["결제대행사","세무신고 대행"]
+} $pj$::jsonb,
+$rp$ {
+  "max_penalty_pct":10,
+  "penalty_base":"결제금액",
+  "unit_price_basis":"정상가(타석 1회 35,000원)",
+  "deductions":["등록일~해지일 일수 × 35,000원","위약금(10%이내)","카드수수료","사은품"]
+} $rp$::jsonb)
 on conflict (contract_type, version) do nothing;
+
+-- 기존 v1 시드를 비활성화하여 새 v2 만 활성으로 사용
+update public.contract_templates set is_active = false
+ where (contract_type, version) in (
+   ('combo','2026-04-28'), ('pt','2025-07-25'), ('golf','2026-04-28')
+ );
 
 -- ===========================================================================
 -- 끝

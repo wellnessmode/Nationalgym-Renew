@@ -3,29 +3,37 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>계약서 보기 · 내셔널짐</title>
+<meta name="theme-color" content="#1f7a3a">
+<title>전자계약서 · 내셔널짐</title>
 <link rel="stylesheet" href="./css/style.css">
 </head>
-<body>
+<body class="view-page">
+
 <div class="container">
 
-<div id="loading" class="card muted">불러오는 중...</div>
+<div id="loading" class="card text-center">
+  <div class="spinner" aria-hidden="true"></div>
+  <p class="muted">계약서를 불러오는 중...</p>
+</div>
 
-<div id="doc" style="display:none">
-  <header class="brand flex-between no-print">
+<div id="doc" hidden>
+  <header class="brand-bar flex-between no-print">
     <h1>전자계약서</h1>
     <div class="toolbar">
-      <button id="btn-pdf" class="secondary">PDF 저장</button>
-      <button id="btn-print" class="secondary">인쇄</button>
+      <button id="btn-pdf" class="btn-primary">📄 PDF 저장</button>
+      <button id="btn-print" class="btn-ghost">🖨 인쇄</button>
     </div>
   </header>
+
   <div id="body"></div>
 </div>
 
 </div>
+
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
 <script src="./config.js"></script>
 <script src="./js/supabase.js"></script>
 <script src="./js/view.js"></script>

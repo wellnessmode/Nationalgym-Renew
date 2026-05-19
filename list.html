@@ -3,50 +3,85 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#1f7a3a">
 <title>계약 목록 · 내셔널짐</title>
 <link rel="stylesheet" href="./css/style.css">
 </head>
 <body>
 <div class="container">
-<header class="brand">
+<header class="brand-bar">
   <div class="flex-between">
-    <h1>계약 목록</h1>
-    <div class="toolbar"><a href="./admin.html" class="btn">새 계약 발송</a></div>
+    <h1>📋 계약 관리</h1>
+    <div class="toolbar"><a href="./admin.html" class="btn-primary">＋ 새 계약 발송</a></div>
   </div>
-  <p class="muted">발송된 계약의 상태를 조회·관리합니다.</p>
+  <p class="muted">발송된 계약의 상태를 실시간 추적·관리합니다.</p>
 </header>
 
 <div id="login" class="card" style="display:none">
   <h2>관리자 로그인</h2>
   <label>이메일 <input id="login-email" type="email"></label>
   <label>비밀번호 <input id="login-pw" type="password"></label>
-  <p><button id="btn-login">로그인</button></p>
+  <p><button id="btn-login" class="btn-primary">로그인</button></p>
   <p class="error" id="login-err"></p>
 </div>
 
 <div id="app" style="display:none">
+
+  <!-- 대시보드 KPI 카드 -->
+  <section class="dash-grid">
+    <div class="kpi-card kpi-total" data-quickfilter="">
+      <span class="kpi-label">전체</span>
+      <span class="kpi-value" id="kpi-total">-</span>
+    </div>
+    <div class="kpi-card kpi-pending" data-quickfilter="sent">
+      <span class="kpi-label">대기 중</span>
+      <span class="kpi-value" id="kpi-sent">-</span>
+      <span class="kpi-sub">발송·열람</span>
+    </div>
+    <div class="kpi-card kpi-signed" data-quickfilter="signed">
+      <span class="kpi-label">완료</span>
+      <span class="kpi-value" id="kpi-signed">-</span>
+      <span class="kpi-sub" id="kpi-signed-amt">-</span>
+    </div>
+    <div class="kpi-card kpi-expired" data-quickfilter="expired">
+      <span class="kpi-label">만료</span>
+      <span class="kpi-value" id="kpi-expired">-</span>
+      <span class="kpi-sub">재발송 필요</span>
+    </div>
+  </section>
+
   <div class="card">
-    <div class="row">
-      <input id="q" type="text" placeholder="이름 / 휴대폰 검색">
+    <div class="filter-bar">
+      <input id="q" type="text" placeholder="🔍 이름 / 휴대폰 검색">
       <select id="filter-status">
         <option value="">전체 상태</option>
         <option value="pending">대기</option>
         <option value="sent">발송</option>
         <option value="viewed">열람</option>
-        <option value="signed">서명완료</option>
+        <option value="identified">본인확인</option>
+        <option value="signed">동의완료</option>
         <option value="expired">만료</option>
         <option value="canceled">취소</option>
       </select>
       <select id="filter-branch">
         <option value="">전체 지점</option>
       </select>
+      <select id="filter-period">
+        <option value="">전체 기간</option>
+        <option value="today">오늘</option>
+        <option value="week">이번주</option>
+        <option value="month">이번달</option>
+        <option value="3month">최근 3개월</option>
+      </select>
+      <button id="btn-export" class="btn-ghost">📥 CSV</button>
     </div>
     <div class="toolbar"><span class="muted small" id="count"></span></div>
+
     <div style="overflow-x:auto">
-      <table class="data" id="tbl">
+      <table class="data data-list" id="tbl">
         <thead><tr>
-          <th>회원</th><th>휴대폰</th><th>지점</th><th>금액</th>
-          <th>상태</th><th>생성일</th><th></th>
+          <th>회원</th><th>휴대폰</th><th>지점</th><th>약관</th><th class="num">금액</th>
+          <th>상태</th><th>생성일</th><th>처리</th>
         </tr></thead>
         <tbody></tbody>
       </table>

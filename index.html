@@ -3,33 +3,48 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#1f7a3a">
 <title>내셔널짐 전자계약서</title>
 <link rel="stylesheet" href="./css/style.css">
 </head>
 <body>
 <div class="container">
-<header class="brand">
+<header class="brand-bar">
   <h1>내셔널짐 전자계약서</h1>
-  <p class="muted">PT · 골프 회원 재계약 시 약관 동의 및 전자서명을 위한 시스템입니다.</p>
+  <p class="muted">PT · 골프 회원 재계약 시 약관 동의 및 전자서명을 위한 엔터프라이즈 시스템입니다.</p>
 </header>
 
 <section class="card">
-  <h2>관리자</h2>
-  <p>회원 정보를 입력하고 서명 링크를 발송합니다.</p>
-  <p>
-    <a class="btn" href="./admin.html">계약서 발송</a>
-    <a class="btn secondary" href="./list.html">계약 목록</a>
+  <h2>👤 관리자</h2>
+  <p class="muted small">회원 정보를 입력하고 카카오톡 발송용 서명 링크를 생성합니다.</p>
+  <p class="toolbar">
+    <a class="btn-primary" href="./admin.html">＋ 새 계약 발송</a>
+    <a class="btn-ghost" href="./list.html">📋 계약 목록</a>
   </p>
 </section>
 
 <section class="card">
-  <h2>회원</h2>
-  <p class="muted">회원님께서는 카카오톡으로 받으신 서명 링크로 직접 접속해 주세요.<br>
-  본 메인 페이지에서는 별도 진입이 불가능합니다.</p>
+  <h2>👥 회원</h2>
+  <p class="muted small">회원님께서는 카카오톡으로 받으신 서명 링크로 직접 접속해 주세요.<br>
+  본 페이지에서는 별도 진입이 불가능합니다.</p>
 </section>
 
-<footer class="muted small">
-  © NATIONAL GYM. 본 시스템은 개인사업자 사업주와 회원 사이의 계약 체결을 보조합니다.
+<section class="card">
+  <h3>법적 준거</h3>
+  <p class="muted small">
+    본 시스템은 다음 법령을 준수합니다.<br>
+    「전자서명법」 제3조 (전자서명의 효력)<br>
+    「전자문서 및 전자거래 기본법」 제4조 (전자문서의 효력)<br>
+    「개인정보보호법」 (수집·이용·제공 분리 동의)<br>
+    「전자상거래법」 제6조 (거래기록 5년 보관)<br>
+    「방문판매법」 제31조 (계속거래의 해지 - 중도해지권)<br>
+    「체력단련장 이용 표준약관」(공정거래위원회 제10095호)<br>
+    분쟁 시 「소비자기본법」 제57조에 따른 한국소비자원 분쟁조정 및 관할법원 절차를 따릅니다.
+  </p>
+</section>
+
+<footer class="muted small" style="margin-top:24px; padding-top:16px; border-top:1px solid var(--ink-100); text-align:center">
+  © NATIONAL GYM · Contract System v2 Enterprise
 </footer>
 </div>
 </body>

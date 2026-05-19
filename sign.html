@@ -2,67 +2,216 @@
 <html lang="ko">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>전자계약서 서명 · 내셔널짐</title>
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#1f7a3a">
+<meta name="robots" content="noindex,nofollow">
+<title>전자계약서 · 내셔널짐</title>
 <link rel="stylesheet" href="./css/style.css">
 </head>
-<body>
-<div class="container">
-<header class="brand">
-  <h1>전자계약서</h1>
-  <p class="muted">아래 약관과 계약 내용을 확인하신 뒤 서명해 주세요.</p>
-</header>
+<body class="sign-page">
 
-<div id="loading" class="card muted">불러오는 중...</div>
+<!-- 진행 표시 -->
+<nav id="stepper" class="stepper" aria-label="진행 단계" hidden>
+  <ol>
+    <li data-step="welcome"><span class="dot">1</span><b>안내</b></li>
+    <li data-step="identity"><span class="dot">2</span><b>본인확인</b></li>
+    <li data-step="terms"><span class="dot">3</span><b>약관·내용</b></li>
+    <li data-step="consent"><span class="dot">4</span><b>동의</b></li>
+    <li data-step="done"><span class="dot">5</span><b>완료</b></li>
+  </ol>
+</nav>
 
-<div id="app" style="display:none">
+<main class="container sign-main">
+
+<!-- 로딩/오류 -->
+<section id="loading" class="card text-center">
+  <div class="spinner" aria-hidden="true"></div>
+  <p class="muted">계약 정보를 불러오는 중입니다...</p>
+</section>
+
+<section id="error-box" class="card error-card" hidden>
+  <h2 class="error-title">❗ 접속 불가</h2>
+  <p id="error-msg"></p>
+  <p class="muted small" id="error-help"></p>
+  <div id="error-actions"></div>
+</section>
+
+<!-- 1) Welcome -->
+<section id="step-welcome" class="step" hidden>
+  <header class="brand-bar">
+    <h1 id="biz-name">내셔널짐</h1>
+    <p class="muted small" id="biz-phone"></p>
+  </header>
+
+  <div class="card hero-card">
+    <p class="hero-tag">전자계약서</p>
+    <h2 id="welcome-title">계약서 서명 안내</h2>
+    <p class="muted"><b id="member-masked"></b>님, 아래 절차에 따라 계약 내용을 확인하고 동의하시면 계약이 체결됩니다.</p>
+    <p class="muted small" id="welcome-meta"></p>
+  </div>
+
+  <div class="card">
+    <h3>진행 방법</h3>
+    <ol class="guide-list">
+      <li><b>본인확인</b> — 이름·생년월일·휴대폰 끝 4자리</li>
+      <li><b>약관 및 계약 내용 확인</b> — 끝까지 스크롤하여 모두 확인</li>
+      <li><b>동의 항목 체크</b> — 필수 항목을 모두 체크하면 동의가 완료됩니다</li>
+      <li><b>완료</b> — 계약서 PDF를 즉시 받아보실 수 있습니다</li>
+    </ol>
+    <p class="muted small">
+      ※ 본 시스템은 「전자서명법」 제3조 및 「전자문서법」 제4조에 따라 서면 계약과 동일한 효력을 가지며,
+      모든 접속·확인·동의 시점이 자동 기록됩니다.
+    </p>
+  </div>
+
+  <div class="sticky-cta">
+    <button id="btn-to-identity" class="btn-primary block">시작하기</button>
+  </div>
+</section>
+
+<!-- 2) Identity -->
+<section id="step-identity" class="step" hidden>
+  <div class="card">
+    <h2>본인확인</h2>
+    <p class="muted">분쟁 예방을 위해 본인 여부를 확인합니다. 입력 정보는 발송 시 등록된 정보와 일치해야 합니다.</p>
+
+    <label>이름
+      <input id="id-name" type="text" autocomplete="name" inputmode="text" placeholder="예: 홍길동">
+    </label>
+    <label>생년월일
+      <input id="id-birth" type="date" autocomplete="bday" max="2026-12-31">
+    </label>
+    <label>휴대폰 끝 4자리
+      <input id="id-phone4" type="tel" inputmode="numeric" maxlength="4" pattern="[0-9]{4}" placeholder="0000">
+    </label>
+
+    <p class="error" id="id-err"></p>
+    <p class="muted small">3회 이상 불일치 시 잠시 후 다시 시도해 주세요. 정보 오류는 발송 담당자에게 문의 바랍니다.</p>
+  </div>
+
+  <div class="sticky-cta two">
+    <button class="btn-ghost" data-back="welcome">이전</button>
+    <button id="btn-verify" class="btn-primary">본인확인</button>
+  </div>
+</section>
+
+<!-- 3) Terms -->
+<section id="step-terms" class="step" hidden>
+  <div class="card">
+    <h2 id="terms-title">약관</h2>
+    <p class="muted small" id="terms-meta"></p>
+
+    <div class="alert-box" id="scroll-hint">
+      <b>📜 약관 끝까지 확인 필요</b>
+      <p>법령(전자상거래법·약관규제법)에 따라 약관 전문을 끝까지 확인하셔야 동의 단계로 진행할 수 있습니다.</p>
+    </div>
+
+    <article class="terms-scroll" id="terms-scroll">
+      <div id="terms-body"></div>
+      <div class="terms-sentinel" id="terms-end"></div>
+    </article>
+
+    <div class="terms-progress" aria-hidden="true"><span id="terms-progress-bar"></span></div>
+    <p class="muted small"><span id="terms-progress-text">0%</span> 확인 완료</p>
+  </div>
 
   <div class="card">
     <h2>계약 내용</h2>
     <div id="contract-summary"></div>
   </div>
 
-  <div class="card">
-    <h2 id="terms-title">약관 전문</h2>
-    <div class="terms" id="terms-body"></div>
-    <p class="muted small" id="terms-meta"></p>
+  <div class="card highlight-box">
+    <h3>💡 환불 / 양도 핵심 안내</h3>
+    <div id="refund-policy-box"></div>
+    <p class="muted small">위 내용은 약관 §3 환불·양도 조항의 요약입니다. 정확한 환불액은 해지 시점에 산정됩니다.</p>
   </div>
 
-  <div class="card">
-    <h2>동의 사항</h2>
-    <p class="muted small">필수 항목은 모두 체크해 주셔야 서명이 가능합니다.</p>
-    <div id="agreements"></div>
+  <div class="card highlight-box">
+    <h3>🔒 개인정보 처리 안내</h3>
+    <div id="privacy-policy-box"></div>
   </div>
 
+  <div class="sticky-cta two">
+    <button class="btn-ghost" data-back="identity">이전</button>
+    <button id="btn-to-consent" class="btn-primary" disabled>약관 확인 완료, 동의로 이동</button>
+  </div>
+</section>
+
+<!-- 4) Consent -->
+<section id="step-consent" class="step" hidden>
   <div class="card">
-    <h2>본인 서명</h2>
-    <p class="muted small">아래 박스에 손가락 또는 마우스로 서명해 주세요.</p>
-    <div class="sig-wrap">
-      <canvas id="sig"></canvas>
-      <div class="sig-hint" id="sig-hint">여기에 서명</div>
+    <h2>동의 항목</h2>
+    <p class="muted">필수 항목은 모두 체크해 주셔야 계약이 완료됩니다. 선택 항목은 거부하셔도 계약 체결에 영향이 없습니다.</p>
+
+    <div class="agreements-all">
+      <label class="all-toggle">
+        <input id="ag-all" type="checkbox">
+        <span><b>전체 동의</b><span class="muted small"> (필수+선택 모두)</span></span>
+      </label>
     </div>
-    <p><button class="secondary" id="sig-clear">다시 그리기</button></p>
+
+    <div id="agreements-core" class="agreement-group">
+      <h4>① 계약 약관 <span class="req-tag">필수</span></h4>
+    </div>
+    <div id="agreements-privacy" class="agreement-group">
+      <h4>② 개인정보 <span class="req-tag">필수</span></h4>
+    </div>
+    <div id="agreements-sensitive" class="agreement-group">
+      <h4>③ 민감정보(건강) <span class="req-tag">필수</span></h4>
+    </div>
+    <div id="agreements-facility" class="agreement-group">
+      <h4>④ 시설 이용 안내</h4>
+    </div>
+    <div id="agreements-marketing" class="agreement-group">
+      <h4>⑤ 마케팅 (선택)</h4>
+    </div>
   </div>
 
-  <p>
-    <button id="submit">동의하고 서명 제출</button>
-  </p>
-  <p class="error" id="err"></p>
-</div>
+  <div class="card">
+    <p class="legal-notice">
+      위 항목들에 동의하고 <b>[동의·서명 제출]</b> 버튼을 누르시면, 「전자서명법」 제3조에 따라
+      본인의 서명에 해당하는 전자서명을 한 것으로 간주됩니다.
+    </p>
+    <p class="muted small">
+      이 시점의 접속 IP·디바이스·시간·약관 버전·해시값이 자동 기록되어 분쟁 시 증거로 사용됩니다.
+    </p>
+    <p class="error" id="consent-err"></p>
+  </div>
 
-<div id="done" class="card" style="display:none">
-  <h2 class="ok">서명이 완료되었습니다.</h2>
-  <p>완료된 계약서를 아래에서 확인·저장하실 수 있습니다.</p>
-  <p><a id="view-link" class="btn">계약서 보기</a></p>
-  <p class="muted small">본 계약서는 센터에 영구 보관되며, 분쟁 발생 시 증빙으로 활용됩니다.</p>
-</div>
+  <div class="sticky-cta two">
+    <button class="btn-ghost" data-back="terms">이전</button>
+    <button id="btn-submit" class="btn-primary" disabled>동의·서명 제출</button>
+  </div>
+</section>
 
-</div>
+<!-- 5) Done -->
+<section id="step-done" class="step" hidden>
+  <div class="card done-card">
+    <div class="big-check" aria-hidden="true">✓</div>
+    <h2>계약이 체결되었습니다</h2>
+    <p class="muted">전자계약서가 안전하게 보관됩니다. 아래에서 PDF로 저장하시거나 카카오톡으로 받아가실 수 있습니다.</p>
+    <p class="muted small" id="done-hash"></p>
+  </div>
+
+  <div class="card">
+    <a id="view-link" class="btn-primary block">계약서 보기</a>
+    <button id="btn-share" class="btn-ghost block" hidden>카카오톡으로 받기</button>
+    <p class="muted small">본 계약서는 「전자상거래법」 제6조에 따라 5년간 안전하게 보관됩니다.<br>
+    필요 시 본 페이지 링크로 언제든 다시 열람 가능합니다.</p>
+  </div>
+</section>
+
+</main>
+
+<footer class="sign-footer muted small">
+  본 시스템은 「전자서명법」 「전자문서법」 「개인정보보호법」 「전자상거래법」 「방문판매법」 「체력단련장 표준약관(공정위 제10095호)」을 준수합니다.<br>
+  © NATIONAL GYM Contract System v2
+</footer>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="https://cdn.jsdelivr.net/npm/signature_pad@4/dist/signature_pad.umd.min.js"></script>
 <script src="./config.js"></script>
 <script src="./js/supabase.js"></script>
+<script src="./js/fingerprint.js"></script>
 <script src="./js/sign.js"></script>
 </body>
 </html>

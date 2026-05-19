@@ -1,11 +1,30 @@
-# 내셔널짐 전자계약서 시스템
+# 내셔널짐 전자계약서 시스템 v2 (Enterprise)
 
-PT · 골프 회원 **재계약 시 약관 변경 고지 누락** 및 서명 누락 문제 해결을 위한
-정적 웹 + Supabase 기반 시스템입니다.
-여러 지점에서 동일하게 사용할 수 있고 (지점별 사업자 정보 자동 반영), 카카오톡으로 발송된 링크 한 번에 약관 확인 → 동의 → 손글씨 서명까지 완료됩니다.
+PT · 골프 회원 **재계약 시 약관 변경 고지 누락** 및 동의 누락 문제를 해결하기 위한
+정적 웹 + Supabase 기반 엔터프라이즈급 전자계약 시스템.
+
+여러 지점에서 동일하게 사용할 수 있으며 (지점별 사업자 정보 자동 반영),
+카카오톡으로 발송된 링크 하나로 회원이 **본인확인 → 약관 확인 → 동의** 3단계만으로
+계약을 체결할 수 있습니다.
 
 > 본 레포는 전자계약서 시스템 전용입니다.
 > 골프PT 본 앱(`wellnessmode/Golf_PT_collabo`)과 코드·DB(Supabase 프로젝트) 모두 분리되어 있습니다.
+
+## v2 Enterprise — 주요 변경점
+
+- **체크박스 기반 동의** — 손글씨 서명 제거. 「전자서명법」(2020 개정) §3에 따른 체크박스 전자서명으로 동일한 법적 효력
+- **본인확인 게이트** — 이름 + 생년월일 + 휴대폰 끝 4자리 일치 검증 후에만 동의 단계 진입
+- **약관 스크롤 90% 강제** — 약관 끝까지 확인해야 동의 버튼 활성화
+- **다단계 wizard UI** — Welcome → 본인확인 → 약관 확인 → 동의 → 완료 (각 단계 진행 추적)
+- **PIPA 분리 동의** — 약관 / 개인정보 수집·이용 / 제3자 제공 / 민감정보(건강) / 마케팅 5단계 분리
+- **방문판매법 §31 중도해지권 안내** — 헬스장은 "계속거래"로 회원이 언제든 중도해지 가능 명시
+- **표준약관 §10095 환불공식 노출** — 정상가 기준 일할 계산 + 위약금 10% 상한
+- **무결성 강화** — SHA-256 content_hash · 자동 IP 수집(`inet_client_addr()`) · 디바이스 핑거프린트 해시 · server-side 스냅샷 재구성
+- **감사 추적 강화** — 9가지 이벤트 (link_viewed / terms_scrolled / identity_verified / consent_checked / consented / pdf_viewed 등) 자동 기록
+- **immutable 트리거** — 동의 완료 후 핵심 컨텐츠·서명 레코드·감사 로그 변경 차단
+- **Certificate of Completion** — PDF에 무결성 해시 · 본인확인 시각 · IP · QR 검증 URL 자동 첨부
+- **256bit 토큰** — `gen_random_bytes(32)` base64url (기존 128bit hex 대비 보안 강화)
+- **관리자 대시보드** — 상태별 KPI 카드 + 검색·필터·기간·지점 + CSV 내보내기
 
 ## 구성
 
@@ -13,9 +32,10 @@ PT · 골프 회원 **재계약 시 약관 변경 고지 누락** 및 서명 누
 |---|---|
 | 프론트엔드 | 정적 HTML / CSS / JS (CDN) |
 | 백엔드 | Supabase (PostgreSQL + Auth + RPC) |
-| 서명 | signature_pad (캔버스 손글씨) |
-| PDF | jsPDF + html2canvas (클라이언트 생성) |
-| 발송 | (MVP) 카카오톡 수동 복붙 → (다음 단계) 알림톡 자동화 |
+| 동의 | 체크박스 (전자서명법 §3) |
+| 무결성 | SHA-256 해시 + 서버 timestamp + IP + 디바이스 핑거프린트 |
+| PDF | jsPDF + html2canvas + QRCode (클라이언트 생성) |
+| 발송 | (MVP) 카카오톡 수동 복붙 → (다음) 알림톡 자동화 |
 
 ## 페이지
 
@@ -23,16 +43,15 @@ PT · 골프 회원 **재계약 시 약관 변경 고지 누락** 및 서명 누
 |---|---|---|
 | `index.html` | 진입 안내 | - |
 | `admin.html` | 계약서 발송 | 관리자 (Supabase Auth) |
-| `list.html` | 계약 목록 조회 | 관리자 |
-| `sign.html?t=TOKEN` | 회원 약관 확인 + 서명 | 토큰 |
-| `view.html?id=ID&t=TOKEN` | 서명 완료본 조회 / PDF 저장 | 토큰 또는 관리자 |
+| `list.html` | 계약 대시보드 · 검색 · CSV | 관리자 |
+| `sign.html?t=TOKEN` | 회원 본인확인 + 약관 확인 + 동의 | 토큰 |
+| `view.html?id=ID&t=TOKEN` | 완료본 조회 + PDF + Certificate | 토큰 또는 관리자 |
 
 ## ⚠️ 중요: Supabase 프로젝트 분리
 
 본 전자계약서 시스템은 **반드시 전용 신규 Supabase 프로젝트**에 적용해야 합니다.
 
-- ❌ 기존 골프PT콜라보(`members / assessments / sessions / reports`) 프로젝트에 절대 합치지 마세요
-- ❌ 다른 운영 중인 프로젝트에도 합치지 마세요
+- ❌ 기존 골프PT콜라보 프로젝트와 합치지 마세요
 - ✅ 본 시스템 전용으로 신규 프로젝트를 하나 더 만드세요 (무료 티어로 충분)
 
 `supabase_schema.sql` 에는 안전 가드가 들어 있어 기존 `members` 테이블이 있는 프로젝트에 잘못 실행하면 즉시 중단됩니다.
@@ -41,11 +60,10 @@ PT · 골프 회원 **재계약 시 약관 변경 고지 누락** 및 서명 누
 
 ### 1. 신규 Supabase 프로젝트 생성
 1. https://supabase.com → **New project** (이름 예: `nationalgym-contract`)
-   - **기존 프로젝트와 별개로 새로 생성**
 2. **Project Settings → API** 에서 `Project URL` 과 `anon public key` 메모
 3. **SQL Editor** 에서 [`supabase_schema.sql`](./supabase_schema.sql) 전체를 복사하여 실행
-   - 실행 시 약관 시드(`combo` 2026-04-28 / `pt` 2025-07-25 / `golf` 2026-04-28) 자동 입력
-   - 만약 `이 프로젝트에는 골프PT콜라보 데이터가 이미 존재합니다` 오류가 나면 → 잘못된 프로젝트입니다. 신규 프로젝트를 다시 만들어 주세요.
+   - 실행 시 v2 약관 시드(`combo` / `pt` / `golf` 각 2026-05-19) 자동 입력
+   - 기존 v1 시드는 자동으로 `is_active=false` 처리됨
 4. **Authentication → Users → Add user** 로 관리자 계정 추가 (이메일 / 비밀번호)
 
 ### 2. 설정 파일 작성
@@ -54,116 +72,104 @@ PT · 골프 회원 **재계약 시 약관 변경 고지 누락** 및 서명 누
 cp config.example.js config.js
 ```
 
-`config.js` 를 열어 다음 값을 채워 주세요.
+`config.js` 에 다음 값을 채워 주세요.
 - `SUPABASE_URL`, `SUPABASE_ANON_KEY`
-- `BRAND_NAME`: 브랜드명 (예: `'내셔널짐'`)
 - `BUSINESS_BY_BRANCH`: 지점별 사업자 정보 (지점마다 별도 사업자등록증인 경우 각각 입력)
-  - `name` (상호), `owner` (대표자), `registration_no` (사업자등록번호), `address` (사업장 주소), `phone` (대표 연락처)
-- `BRANCHES`: 지점 키 배열 (BUSINESS_BY_BRANCH 의 키와 일치)
-- `SIGN_BASE_URL`: 배포된 sign.html 의 절대 URL
-  - 예: `https://your-domain.com/sign.html`
-  - GitHub Pages 사용 시: `https://wellnessmode.github.io/Nationalgym-Renew/sign.html`
-
-> 운영 정책에 따라 `config.js` 를 git 에 올릴지 결정하세요.
-> anon key 는 RLS 정책으로 보호되므로 공개돼도 안전하며, 사업자 정보는 계약서에 인쇄되는 공개 정보입니다.
+- `BRANCHES`: 지점 키 배열
+- `SIGN_BASE_URL`: 배포된 sign.html 의 절대 URL (빈 문자열 시 자동 추론)
 
 ### 3. 호스팅
 
-- **GitHub Pages**: Repo Settings → Pages → Source: GitHub Actions (워크플로우가 자동 배포)
+- **GitHub Pages**: 자동 배포 (`.github/workflows/static.yml`)
   접속 URL: `https://wellnessmode.github.io/Nationalgym-Renew/`
 - **Vercel / Netlify**: 정적 사이트로 폴더 단위 배포
-- **로컬 테스트**: `python3 -m http.server 8080` → http://localhost:8080/
+- **로컬 테스트**: `python3 -m http.server 8080`
 
-## 운영 플로우 (MVP)
+## 운영 플로우
 
 ```
-[관리자]                                            [회원]
+[관리자]                                       [회원]
   1. admin.html 로그인
   2. 약관 종류 + 지점 선택
-  3. 회원 정보 / 계약 항목 / 금액 입력
-  4. "서명 링크 생성" 클릭
-        └ DB 저장 + 토큰 발급 + 상태='sent'
-  5. 자동 생성된 카카오톡 메시지 복사
-  6. 카카오 비즈니스 채널 / 1:1 채팅으로
-     메시지 붙여넣기 발송         ─────►  7. 링크 클릭
-                                          8. 약관 확인
-                                          9. 동의 항목 체크
-                                         10. 손글씨 서명
-                                         11. 제출
- 12. list.html 에서 '서명완료' 확인  ◄────  (자동 갱신)
- 13. view.html 에서 PDF 저장
+  3. 회원 정보 입력 (이름·전화·생년월일·항목·금액)
+  4. "서명 링크 생성"
+  5. 카카오톡 메시지 복사
+  6. 회원에게 발송      ──────►  7. 링크 클릭 → Welcome
+                                  8. 본인확인 (이름+생년월일+휴대폰끝4)
+                                  9. 약관 확인 (90% 스크롤)
+                                 10. 5개 그룹 동의 체크
+                                 11. 제출 → 즉시 PDF 발급
+ 12. list.html '동의완료' ◄────  (자동 갱신)
+ 13. view.html 에서 PDF + 감사 로그
 ```
+
+각 단계마다 server timestamp · IP · User-Agent · 디바이스 핑거프린트 해시가 자동 기록됩니다.
 
 ## 약관 버전 관리
 
 약관 변경 시:
 1. `contract_templates` 테이블에 새 version 행 INSERT
-2. 기존 동일 contract_type 의 행은 `is_active=false` 로 변경
-
-```sql
-update public.contract_templates set is_active=false where contract_type='pt';
-insert into public.contract_templates (contract_type, version, title, body_html, agreements_json)
-values ('pt', '2026-06-01', '내셔널짐 PT 이용 계약서', $$<h3>...</h3>...$$, '[...]'::jsonb);
-```
+2. 기존 동일 contract_type 행은 `is_active=false` 로 변경
 
 발송된 계약서는 발송 시점의 `template_id` 를 참조 → 이후 약관이 바뀌어도 추적 가능.
-서명된 계약은 `contract_html_snapshot` 에 약관 전문이 박제되어 이중 안전장치.
-
-## 카카오 알림톡 자동화 (다음 단계)
-
-현재 MVP 는 관리자가 메시지를 직접 복붙하여 카카오톡 비즈니스 채널 / 개인톡으로 보냅니다.
-이후 알림톡 솔루션 API 키 확보 시:
-
-1. Supabase **Edge Function** `send-alimtalk` 추가
-2. 알림톡 템플릿 등록 (사전 승인 필요)
-3. `admin.js` 의 링크 생성 직후 Edge Function 호출
-4. 회신값 기반으로 `contracts.status` 갱신
-
-지원 가능한 솔루션 예: 알리고, NHN 비즈메시지, 솔라피, 카카오 i 커넥트.
+동의된 계약은 `contract_html_snapshot` 에 약관 전문이 박제 + `content_hash` 로 무결성 보장.
 
 ## 만료 처리 자동화
 
 ```sql
--- Supabase Cron 에 등록 (대시보드 → Database → Cron Jobs)
--- 매시간 실행
+-- Supabase Cron 에 등록 (Database → Cron Jobs, 매시간)
 select public.expire_old_contracts();
 ```
 
-## 법적 고려 사항
+## 법적 준거
 
-- **전자서명법**: 손글씨 서명은 일반전자서명에 해당. 서명자 User-Agent · 시간 · 약관 스냅샷을 보관.
-- **개인정보보호법**: 수집 항목 · 이용 목적 · 보유 기간을 약관 본문에 명시. 마케팅은 별도 [선택] 동의.
-- **방문판매법 / 할부거래법**: 환불 규정 · 청약철회 안내를 약관 본문에 포함.
-- **개인사업자 표시**: 계약서에 상호 · 대표자명 · 사업자등록번호 표기 (config 의 `BUSINESS_BY_BRANCH[지점]` 정보로 자동 반영). 지점이 별도 사업자등록증을 가진 경우 각 지점의 계약서에는 해당 지점 사업자 정보가 들어갑니다.
+본 시스템은 다음 법령을 준수하도록 설계되었습니다:
 
-> 본 시스템은 1차 검토용 MVP 입니다. 실제 운영 전 사내 법무 또는 변호사 검토를 권장합니다.
+| 법령 | 적용 |
+|---|---|
+| 「전자서명법」 §3 | 체크박스 전자서명의 법적 효력 |
+| 「전자문서 및 전자거래 기본법」 §4 | 전자문서의 서면 동일 효력 |
+| 「개인정보보호법」 §15, §22 | 분리 동의, 보유기간·목적·항목 명시 |
+| 「전자상거래법」 §6 | 거래기록 5년, 분쟁기록 3년 보존 |
+| 「방문판매법」 §31 | 계속거래 중도해지권 |
+| 공정거래위원회 「체력단련장 이용 표준약관」 제10095호 | 위약금 10% 상한, 정상가 일할 환불 |
+| 「소비자기본법」 §57 | 한국소비자원 분쟁조정 |
+
+> 본 시스템은 일반 분쟁 대응 수준입니다. 100만원 이상 고액 또는 분쟁 빈도가 높은 경우
+> 추가 본인확인(SMS OTP · PASS 인증) 및 RFC 3161 공인 타임스탬프(KISA TSA) 도입을 검토하세요.
 
 ## 디렉터리 구조
 
 ```
-contract/
-├── README.md                  ─ 본 문서
-├── supabase_schema.sql        ─ DB 스키마 + RPC + 시드 약관
+Nationalgym-Renew/
+├── README.md
+├── supabase_schema.sql        ─ DB 스키마 + RPC + immutable 트리거 + v2 시드
 ├── config.example.js          ─ 환경 설정 샘플
+├── config.js                  ─ 실제 환경 설정 (배포 포함)
 ├── .gitignore
-├── index.html                 ─ 진입 안내
+├── .github/workflows/static.yml ─ GitHub Pages 자동 배포
+├── index.html
 ├── admin.html                 ─ 관리자 발송
-├── list.html                  ─ 관리자 목록
-├── sign.html                  ─ 회원 서명
-├── view.html                  ─ 완료 조회 / PDF
-├── css/
-│   └── style.css
+├── list.html                  ─ 관리자 대시보드
+├── sign.html                  ─ 회원 다단계 wizard
+├── view.html                  ─ 완료본 + Certificate of Completion
+├── css/style.css              ─ Design System v2
 └── js/
     ├── supabase.js            ─ 공통 클라이언트
+    ├── fingerprint.js         ─ 디바이스 핑거프린트 (SHA-256)
     ├── admin.js
     ├── list.js
-    ├── sign.js
-    └── view.js
+    ├── sign.js                ─ 다단계 wizard + audit logging
+    └── view.js                ─ PDF + QR + Certificate
 ```
 
-## 알려진 제한
+## 추후 강화 (선택)
 
-- **서명자 IP 미수집**: 클라이언트 자바스크립트만으로는 IP 를 알 수 없음. 필요 시 Supabase Edge Function 으로 RPC 를 감싸 IP 를 채워 넣을 것.
-- **PDF 한글 폰트**: html2canvas 로 캡처 후 PNG 를 PDF 에 임베드하므로 한글이 그대로 유지됨. 단 멀티 페이지 분할은 페이지 사이가 잘릴 수 있어 1~2장 분량으로 약관 길이를 관리.
-- **알림톡**: MVP 는 수동. 자동화는 외부 솔루션 가입 필요.
-- **서명자 본인확인**: 본인인증(휴대폰 PASS 등)은 미적용. 분쟁 시 서명자 본인 여부는 카카오톡 발송 이력 + 휴대폰 일치 + 서명 필체로 판정.
+- **카카오 알림톡 자동화**: Supabase Edge Function `send-alimtalk` + 알림톡 솔루션 (알리고/NHN 비즈메시지/솔라피)
+- **SMS OTP 2차 인증**: 본인확인 후 SMS 6자리 OTP 추가 (건당 약 9원)
+- **RFC 3161 공인 타임스탬프**: KISA 인증 TSA 연동 (분쟁 시 증거력 최상위)
+- **PASS / 카카오 본인인증**: CI/DI 수령으로 동일인 증명
+- **PDF/A-3 + PAdES**: 서버 사이드 디지털 서명 (행정/공공 입찰용)
+- **회원 보관함**: 본인확인 후 본인의 모든 계약서 열람·다운로드
+- **약관 diff 뷰**: 약관 버전 간 변경 사항 시각화
+- **자동 만료 알림**: D-3 / D-1 카카오톡 자동 알림

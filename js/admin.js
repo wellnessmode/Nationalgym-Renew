@@ -1,4 +1,6 @@
+// 내셔널짐 전자계약서 — 관리자 발송 (v2 Enterprise)
 (function () {
+'use strict';
 const $ = id => document.getElementById(id);
 const cfg = window.NG_CONTRACT_CONFIG;
 let session = null;
@@ -9,7 +11,6 @@ function bizForBranch(branch) {
   return map[branch] || cfg.BUSINESS || {};
 }
 
-// --- auth ---
 function showLogin() { $('login').style.display='block'; $('app').style.display='none'; }
 function showApp() {
   $('login').style.display='none'; $('app').style.display='block';
@@ -26,15 +27,20 @@ async function refreshTemplate() {
   if (error) { $('tpl-info').textContent = '약관 조회 오류: ' + error.message; activeTemplate = null; return; }
   if (!data || !data.length) { $('tpl-info').textContent = '활성 약관 없음. supabase_schema.sql 의 시드를 실행하세요.'; activeTemplate = null; return; }
   activeTemplate = data[0];
-  $('tpl-info').textContent =
-    '활성 약관: ' + activeTemplate.title + ' (v' + activeTemplate.version + ')  · 시행일 '
-    + new Date(activeTemplate.effective_from).toLocaleDateString('ko-KR');
+  $('tpl-info').innerHTML =
+    '✓ 활성 약관: <b>' + escapeHTML(activeTemplate.title) + '</b> '
+    + '<span class="badge-info">v' + escapeHTML(activeTemplate.version) + '</span>'
+    + ' · 시행일 ' + new Date(activeTemplate.effective_from).toLocaleDateString('ko-KR');
+}
+
+function escapeHTML(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, c =>
+    ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 
 async function init() {
-  // 지점 select 채우기
   const branches = (cfg.BRANCHES && cfg.BRANCHES.length) ? cfg.BRANCHES : ['본점'];
-  $('branch').innerHTML = branches.map(b => '<option>' + b + '</option>').join('');
+  $('branch').innerHTML = branches.map(b => '<option>' + escapeHTML(b) + '</option>').join('');
 
   const { data } = await sb.auth.getSession();
   session = data.session;
@@ -65,7 +71,7 @@ function renderItems() {
       '<label>항목명 <input data-k="name" type="text" placeholder="예: PT 30회"></label>' +
       '<label>횟수/기간 <input data-k="qty" type="text" placeholder="예: 30회 / 4개월"></label>' +
       '<label>금액(원) <input data-k="price" type="number" min="0"></label>' +
-      '<button class="secondary rm" data-rm="' + i + '">삭제</button>';
+      '<button class="btn-ghost rm" data-rm="' + i + '">삭제</button>';
     div.querySelectorAll('input').forEach(inp => {
       inp.value = it[inp.dataset.k] != null ? it[inp.dataset.k] : '';
       inp.oninput = () => {
@@ -92,12 +98,14 @@ $('btn-reset').onclick = () => {
   $('err').textContent='';
 };
 
-// --- token ---
-function rndToken(len) {
-  const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
-  const arr = new Uint8Array(len || 32);
+// --- token (256bit, base64url) ---
+function rndToken() {
+  const arr = new Uint8Array(32);
   crypto.getRandomValues(arr);
-  return Array.from(arr, b => chars[b % chars.length]).join('');
+  // base64url
+  let bin = '';
+  for (let i = 0; i < arr.length; i++) bin += String.fromCharCode(arr[i]);
+  return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
 // --- create ---
@@ -108,8 +116,10 @@ $('btn-create').onclick = async () => {
 
   const name = $('m-name').value.trim();
   const phone = $('m-phone').value.trim().replace(/[^0-9]/g, '');
+  const birth = $('m-birth').value;
   if (!name || !phone) { $('err').textContent = '이름과 휴대폰은 필수입니다.'; return; }
   if (!/^01[016789][0-9]{7,8}$/.test(phone)) { $('err').textContent='휴대폰 번호 형식이 올바르지 않습니다.'; return; }
+  if (!birth) { $('err').textContent = '생년월일은 본인확인용으로 필수입니다.'; return; }
   if (items.length === 0) { $('err').textContent = '계약 항목을 1개 이상 추가하세요.'; return; }
   for (const it of items) {
     if (!it.name || !it.qty || !it.price) { $('err').textContent='항목명·횟수·금액을 모두 입력하세요.'; return; }
@@ -117,7 +127,7 @@ $('btn-create').onclick = async () => {
   const total = Number($('total').value || 0);
   if (total <= 0) { $('err').textContent = '총 결제금액을 입력하세요.'; return; }
 
-  const token = rndToken(32);
+  const token = rndToken();
   const expireDays = Math.max(1, Math.min(60, Number($('expire-days').value || 7)));
   const expiresAt = new Date(Date.now() + expireDays * 86400000).toISOString();
 
@@ -134,12 +144,14 @@ $('btn-create').onclick = async () => {
     template_id: activeTemplate.id,
     branch: branch,
     member_name: name, member_phone: phone,
-    member_birth: $('m-birth').value || null,
+    member_birth: birth,
     member_address: $('m-address').value || null,
     member_email: $('m-email').value || null,
     business_name: biz.name,
     business_owner: biz.owner,
     business_registration: biz.registration_no || null,
+    business_address: biz.address || null,
+    business_phone: biz.phone || null,
     items_json: items,
     total_amount: total,
     payment_method: $('pay').value,
@@ -170,14 +182,21 @@ $('btn-create').onclick = async () => {
   $('sign-url').value = url;
 
   const itemSummary = items.map(it => '• ' + it.name + ' (' + it.qty + ') ' + Number(it.price).toLocaleString() + '원').join('\n');
+
+  // v2 카카오톡 메시지 — 서명 → 동의, 본인확인 안내, 법적 효력 명시
   const msg =
     '[' + biz.name + '] ' + name + ' 회원님, 안녕하세요.\n\n' +
-    '재계약 전자계약서 서명 안내드립니다.\n\n' +
-    '■ 계약 항목\n' + itemSummary + '\n\n' +
-    '■ 총 결제금액\n' + total.toLocaleString() + '원\n\n' +
-    '■ 링크 유효기간: ' + expireDays + '일\n\n' +
-    '▶ 서명하러 가기\n' + url + '\n\n' +
-    '링크 접속 → 약관 확인 → 동의 → 손글씨 서명 부탁드립니다.\n' +
+    '재계약 전자계약서 안내드립니다. 아래 링크에서\n' +
+    '본인확인 → 약관 확인 → 동의 체크 3단계로 간편하게 진행하실 수 있습니다.\n\n' +
+    '■ 계약 내용\n' + itemSummary + '\n' +
+    '총 결제금액 ' + total.toLocaleString() + '원\n\n' +
+    '■ 본인확인 정보 (필수)\n' +
+    '· 이름: ' + name + '\n' +
+    '· 생년월일: ' + birth + '\n' +
+    '· 휴대폰 끝 4자리: ' + phone.slice(-4) + '\n\n' +
+    '▶ 계약서 확인 및 동의\n' + url + '\n\n' +
+    '※ 본 링크는 ' + expireDays + '일간 유효하며, 회원님만 사용할 수 있습니다.\n' +
+    '※ 동의·서명 완료 시 「전자서명법」 §3에 따라 서면 계약과 동일한 효력이 발생합니다.\n\n' +
     '문의: ' + (biz.phone || '');
 
   $('kakao-msg').value = msg;
@@ -194,12 +213,12 @@ function copyToClipboard(text) {
 }
 $('btn-copy-url').onclick = async () => {
   await copyToClipboard($('sign-url').value);
-  $('btn-copy-url').textContent = '복사됨';
+  $('btn-copy-url').textContent = '✓ 복사됨';
   setTimeout(() => $('btn-copy-url').textContent = '링크 복사', 1500);
 };
 $('btn-copy-msg').onclick = async () => {
   await copyToClipboard($('kakao-msg').value);
-  $('btn-copy-msg').textContent = '복사됨';
+  $('btn-copy-msg').textContent = '✓ 복사됨';
   setTimeout(() => $('btn-copy-msg').textContent = '메시지 복사', 1500);
 };
 

@@ -8,29 +8,29 @@
 </head>
 <body>
 <div class="container">
-<header class="brand">
+<header class="brand-bar">
   <div class="flex-between">
-    <h1>전자계약서 발송</h1>
-    <div class="toolbar"><a href="./list.html" class="btn secondary">계약 목록</a></div>
+    <h1>📨 전자계약서 발송</h1>
+    <div class="toolbar"><a href="./list.html" class="btn-ghost">📋 계약 목록</a></div>
   </div>
-  <p class="muted">회원 정보·항목·금액 입력 후 서명 링크를 생성하여 카카오톡으로 안내합니다.</p>
+  <p class="muted">회원 정보·항목·금액 입력 후 본인확인·동의·서명 절차의 링크를 생성하여 카카오톡으로 안내합니다.</p>
 </header>
 
 <!-- Login -->
 <div id="login" class="card" style="display:none">
-  <h2>관리자 로그인</h2>
-  <p class="muted">Supabase Auth 에 등록된 관리자 계정으로 로그인하세요.</p>
+  <h2>🔐 관리자 로그인</h2>
+  <p class="muted small">Supabase Auth 에 등록된 관리자 계정으로 로그인하세요.</p>
   <label>이메일 <input id="login-email" type="email" autocomplete="username"></label>
   <label>비밀번호 <input id="login-pw" type="password" autocomplete="current-password"></label>
-  <p><button id="btn-login">로그인</button></p>
+  <p><button id="btn-login" class="btn-primary">로그인</button></p>
   <p class="error" id="login-err"></p>
 </div>
 
 <!-- App -->
 <div id="app" style="display:none">
   <div class="flex-between toolbar">
-    <span class="muted" id="who"></span>
-    <button class="secondary" id="btn-logout">로그아웃</button>
+    <span class="muted small" id="who"></span>
+    <button class="btn-ghost" id="btn-logout">로그아웃</button>
   </div>
 
   <div class="card">
@@ -57,9 +57,10 @@
       <label>휴대폰 <input id="m-phone" type="tel" placeholder="01012345678" required></label>
     </div>
     <div class="row">
-      <label>생년월일 <input id="m-birth" type="date"></label>
+      <label>생년월일 <span class="req-mark">*</span><input id="m-birth" type="date" required></label>
       <label>이메일 (선택) <input id="m-email" type="email"></label>
     </div>
+    <p class="muted small">⚠️ 생년월일은 회원 본인확인(이름+생년월일+휴대폰 끝 4자리)에 사용되므로 필수입니다.</p>
     <label>주소 (선택) <input id="m-address" type="text"></label>
   </div>
 
@@ -94,23 +95,23 @@
   <div class="card">
     <h2>4. 발송</h2>
     <label>링크 만료 (일) <input id="expire-days" type="number" min="1" max="60" value="7"></label>
-    <p>
-      <button id="btn-create">서명 링크 생성</button>
-      <button id="btn-reset" class="secondary">입력 초기화</button>
+    <p class="toolbar">
+      <button id="btn-create" class="btn-primary">🔗 서명 링크 생성</button>
+      <button id="btn-reset" class="btn-ghost">↺ 입력 초기화</button>
     </p>
     <p class="error" id="err"></p>
     <div id="result" style="display:none">
       <hr>
-      <h3>서명 링크</h3>
+      <h3>📎 서명 링크</h3>
       <input id="sign-url" type="text" readonly onclick="this.select()">
-      <p><button class="secondary" id="btn-copy-url">링크 복사</button></p>
-      <h3>카카오톡 발송 메시지 (복사 후 붙여넣기)</h3>
-      <textarea id="kakao-msg" rows="10" readonly onclick="this.select()"></textarea>
-      <p>
-        <button class="secondary" id="btn-copy-msg">메시지 복사</button>
-        <a id="kakao-share" class="btn secondary" target="_blank" rel="noopener" style="display:none">카카오톡 열기</a>
+      <p><button class="btn-ghost" id="btn-copy-url">링크 복사</button></p>
+      <h3>💬 카카오톡 발송 메시지 (복사 후 붙여넣기)</h3>
+      <textarea id="kakao-msg" rows="14" readonly onclick="this.select()"></textarea>
+      <p class="toolbar">
+        <button class="btn-primary" id="btn-copy-msg">메시지 복사</button>
+        <a id="kakao-share" class="btn-ghost" target="_blank" rel="noopener" style="display:none">카카오톡 열기</a>
       </p>
-      <p class="ok">계약 상태는 자동으로 '발송'으로 표시됩니다. 회원이 링크를 열람하면 '열람'으로, 서명하면 '서명완료'로 갱신됩니다.</p>
+      <p class="ok-text">✓ 발송 상태는 자동 추적됩니다 — 발송 → 열람 → 본인확인 → 동의완료 순으로 갱신됩니다.</p>
     </div>
   </div>
 </div>
