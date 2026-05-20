@@ -227,34 +227,30 @@ function renderTerms() {
 
 function setupScrollObserver() {
   const scrollEl = $('terms-scroll');
-  const sentinel = $('terms-end');
   const bar = $('terms-progress-bar');
   const text = $('terms-progress-text');
 
+  function isAtBottom() {
+    // 끝까지 스크롤 도달 검사 (8px 허용 오차 — 모바일 sub-pixel 보정)
+    return scrollEl.scrollTop + scrollEl.clientHeight + 8 >= scrollEl.scrollHeight;
+  }
+
   function updateProgress() {
-    const scrollTop = scrollEl.scrollTop;
     const max = scrollEl.scrollHeight - scrollEl.clientHeight;
-    const pct = max <= 0 ? 100 : Math.min(100, Math.round(scrollTop / max * 100));
+    const pct = max <= 0 ? 100 : Math.min(100, Math.round(scrollEl.scrollTop / max * 100));
     bar.style.width = pct + '%';
     text.textContent = pct + '%';
-    if (pct >= 90 && !termsReady) markTermsReady();
+    if (!termsReady && isAtBottom()) markTermsReady();
   }
 
   scrollEl.addEventListener('scroll', updateProgress, { passive: true });
-  // 콘텐츠가 짧아 스크롤이 없는 경우 즉시 완료
+
+  // 초기 1회 — 콘텐츠가 짧아 스크롤이 불필요한 경우(max<=4)만 즉시 통과
   setTimeout(() => {
     const max = scrollEl.scrollHeight - scrollEl.clientHeight;
     if (max <= 4) markTermsReady();
     updateProgress();
   }, 200);
-
-  // IntersectionObserver 추가 — 센티넬이 보이면 완료
-  if ('IntersectionObserver' in window) {
-    const io = new IntersectionObserver(entries => {
-      entries.forEach(e => { if (e.isIntersecting) markTermsReady(); });
-    }, { root: scrollEl, threshold: 0.5 });
-    io.observe(sentinel);
-  }
 }
 
 function markTermsReady() {
@@ -299,19 +295,16 @@ function renderContractSummary() {
 
 // ---- 환불정책 / 개인정보 박스 ----
 function renderPolicies() {
-  // 환불정책
+  // 환불 요약 (v1 원본 공식: 위약금 10% / 카드수수료 5% / 이용 회차 정상가 / 사은품)
   const rp = (template.refund_policy_json && Object.keys(template.refund_policy_json).length) ? template.refund_policy_json : null;
   const rpBox = $('refund-policy-box');
   if (rp) {
+    const penalty = rp.penalty_pct != null ? rp.penalty_pct : (rp.max_penalty_pct != null ? rp.max_penalty_pct : 10);
+    const cardFee = rp.card_fee_pct != null ? rp.card_fee_pct : 5;
     const deductions = (rp.deductions || []).map(d => '<li>' + escapeHTML(d) + '</li>').join('');
     rpBox.innerHTML =
-      '<ul class="policy-list">'
-      + '<li><b>위약금 한도</b>: ' + escapeHTML(rp.penalty_base || '결제금액') + '의 ' + escapeHTML(String(rp.max_penalty_pct || 10)) + '% 이내</li>'
-      + '<li><b>환산 기준</b>: ' + escapeHTML(rp.unit_price_basis || '정상가') + ' 기준 일할/회당 차감</li>'
-      + '<li><b>중도해지권</b>: 「방문판매법」 §31에 따라 언제든 가능 — 통보일 기준 환불 산정</li>'
-      + '</ul>'
-      + '<p class="muted small"><b>환불액 = </b>결제금액 − 차감 항목:</p>'
-      + '<ul class="deduction-list">' + deductions + '</ul>';
+      '<p><b>환불 공제금액</b>: 결제금액 − 위약금 ' + penalty + '% − 카드 수수료 ' + cardFee + '% − 사은품 및 서비스 공제</p>'
+      + (deductions ? '<ul class="deduction-list">' + deductions + '</ul>' : '');
   } else {
     rpBox.innerHTML = '<p class="muted small">약관 §3 환불 조항을 참조해 주세요.</p>';
   }
@@ -326,9 +319,8 @@ function renderPolicies() {
       + '<tr><th>이용 목적</th><td>' + escapeHTML(pj.purpose || '') + '</td></tr>'
       + '<tr><th>보유 기간</th><td>' + escapeHTML(pj.retention || '') + '</td></tr>'
       + '<tr><th>제3자 제공</th><td>' + (pj.third_party || []).map(escapeHTML).join(', ') + '</td></tr>'
-      + (pj.marketing_retention ? '<tr><th>마케팅 정보 보유</th><td>' + escapeHTML(pj.marketing_retention) + '</td></tr>' : '')
       + '</table>'
-      + '<p class="muted small">필수 항목 미동의 시 계약 체결이 불가합니다. 동의는 언제든 철회 가능합니다.</p>';
+      + '<p class="muted small">필수 항목 미동의 시 계약 체결이 불가합니다.</p>';
   } else {
     pBox.innerHTML = '<p class="muted small">약관 §4 개인정보 조항을 참조해 주세요.</p>';
   }

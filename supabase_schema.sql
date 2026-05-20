@@ -518,7 +518,7 @@ create or replace function public.submit_consent(
 returns json
 language plpgsql
 security definer
-set search_path = public
+set search_path = public, extensions
 as $func$
 declare
   v_contract  public.contracts%rowtype;
@@ -576,9 +576,9 @@ begin
   end loop;
   v_snapshot := v_snapshot || '</ul></div>';
 
-  -- content_hash 계산
+  -- content_hash 계산 (Supabase: pgcrypto는 extensions 스키마)
   v_hash := encode(
-    digest(
+    extensions.digest(
       coalesce(v_contract.template_id::text,'') || '|' ||
       coalesce(v_template.version,'') || '|' ||
       coalesce(v_contract.items_json::text,'') || '|' ||
@@ -586,7 +586,7 @@ begin
       coalesce(v_contract.member_phone,'') || '|' ||
       coalesce(v_contract.member_name,'') || '|' ||
       coalesce(p_agreed_items::text,'')
-      , 'sha256'),
+      , 'sha256'::text),
     'hex');
 
   v_ip := public.request_ip();
@@ -745,11 +745,9 @@ order by 1 desc, 2;
 grant select on public.contracts_stats_monthly to authenticated;
 
 -- ===========================================================================
--- 시드 약관 v2 — PIPA 분리동의 / 방문판매법 / 표준약관 준수
+-- 시드 약관 v2 — 본문은 v1 원본 그대로, 분리동의·정책 메타데이터만 v2 구조
+-- ON CONFLICT DO UPDATE: 재실행 시 본문/동의항목 갱신 (created_at은 보존)
 -- ===========================================================================
-
--- 기존 시드 ON CONFLICT DO NOTHING 이므로 새 버전은 다른 version 으로 추가
--- 새 버전: 2026-05-19 (Enterprise v2 — 분리동의 + 중도해지권 + 환불공식 명시)
 
 insert into public.contract_templates (contract_type, version, title, body_html, agreements_json, privacy_json, refund_policy_json)
 values ('combo', '2026-05-19', '내셔널짐 PT & 골프 이용 계약서',
@@ -791,61 +789,56 @@ $tpl$
 </table>
 <p>유효기간 내 홀딩 가능 횟수: 10회권 1회, 20회 · 30회권은 2회. (1개월권은 1회, 그 외 이용권은 2회)</p>
 
-<h3 class="hl-refund">3. 환불 · 양도 · 업그레이드 <span class="hl-tag">중요</span></h3>
-<p class="hl-box">본 조항은 「방문판매 등에 관한 법률」 제31조(계속거래의 해지)에 의거 회원이 언제든 중도 해지할 수 있는 권리를 명시합니다. 「체력단련장 이용 표준약관」(공정거래위원회 제10095호)에 따라 환불액 계산에는 <b>정상가(할인가 아님)</b>가 사용되며, <b>위약금은 결제금액의 10%를 초과할 수 없습니다</b>.</p>
+<h3>3. 환불 및 양도, 업그레이드</h3>
 <ol>
 <li>최초 등록 후 3회 이용 시점까지 업그레이드 신청이 가능하며, 차액을 납부하여 변경할 수 있습니다.</li>
-<li><b>환불 공식</b>: 환불액 = 결제금액 − (이용 일수/회차 × 정상가) − 위약금(결제금액의 10% 이내) − 카드 수수료(실비) − 사은품 가액
+<li>원칙상 환불은 불가하나 불가피한 사유가 발생한 경우 증빙 서류 제출 및 센터 승인을 통해 소비자 피해 보상 규정에 따라 환불 처리됩니다.</li>
+<li><b>환불 공제금액</b>: 결제금액 − 위약금 10% − 카드 수수료 5% − 사은품 및 서비스 공제
   <ul>
     <li>(타석 이용권) 등록일부터 해지일까지의 날짜 × 1회 이용료 35,000원</li>
     <li>(레슨 / PT 이용권) 1회 정상가 × 이용횟수</li>
   </ul>
 </li>
-<li>양도는 30일 이상 잔여기간이 남아있을 때에 한하여 1회만 가능하며 양도수수료는 5만원이 발생합니다. 단, 1회 양도 이후 환불 / 재양도 / 휴회 적용이 불가합니다. (본 센터에서는 양도를 주선하거나 소개하지 않습니다.)</li>
-<li>중도 해지 의사는 센터 안내데스크 또는 대표 연락처로 통보할 수 있으며, 통보일을 기준으로 환불액이 산정됩니다.</li>
+<li>양도는 30일 이상 잔여기간이 남아있을 때에 한하여 1회만 가능하며 양도수수료는 5만원이 발생됩니다. 단, 1회 양도 이후 환불 / 재양도 / 휴회 적용이 불가합니다. (본 센터에서는 양도를 주선하거나 소개하지 않습니다.)</li>
 </ol>
 
-<h3>4. 개인정보 처리 안내</h3>
+<h3>4. 개인정보의 처리</h3>
 <ul>
-<li><b>수집 항목</b>: 이름, 휴대폰번호, 생년월일, 주소(선택), 이메일(선택), 결제정보</li>
-<li><b>이용 목적</b>: 회원 관리, 서비스 제공, 예약 · 결제 처리, 안전사고 대응, 분쟁 시 증빙</li>
-<li><b>민감정보</b>(건강상태): 안전한 트레이닝 진행을 위한 부상·질환 정보(자발적 고지 항목)</li>
-<li><b>제3자 제공</b>: 결제대행사(카드사) · 세무 신고 외에는 제공하지 않으며, 마케팅 목적 제3자 제공 없음</li>
-<li><b>보유 기간</b>: 「전자상거래법」 제6조에 따라 계약·청약·대금결제 기록 <b>5년</b>, 소비자 분쟁처리 기록 <b>3년</b>. 회원자격 종료 시 위 법정 보유기간 이후 안전하게 파기.</li>
-<li><b>동의 거부 권리</b>: 필수 항목 외 거부 가능. 단, 필수 항목 미동의 시 계약 체결 불가.</li>
-<li><b>동의 철회 권리</b>: 언제든 센터 연락처로 철회 요청 가능 (단, 법정 보유기간 내 정보는 보존됨).</li>
+<li><b>수집 항목</b>: 이름, 휴대폰번호, 생년월일, 주소, 결제정보</li>
+<li><b>이용 목적</b>: 회원 관리, 서비스 제공, 예약 · 결제 처리, 안전사고 대응</li>
+<li><b>보유 기간</b>: 회원 자격 유지기간 및 관계법령에 따른 보존기간 (전자상거래법 5년 등)</li>
+<li><b>제3자 제공</b>: 결제대행사 · 세무 신고를 위한 최소 정보 외 제공하지 않음</li>
 </ul>
 
-<h3>5. 분쟁 해결</h3>
-<p>본 계약과 관련된 분쟁은 우선 당사자 간 협의로 해결하며, 협의가 이루어지지 않을 경우 「소비자기본법」 제57조에 따른 한국소비자원 분쟁조정 또는 관할 법원에 의한 해결을 따릅니다.</p>
-
-<p style="color:#666;font-size:12px">본 약관 시행일: 2026년 5월 19일 / 표준약관 제10095호 준용</p>
+<p style="color:#666;font-size:12px">본 약관 시행일: 2026년 5월 19일</p>
 $tpl$,
 $ag$[
-{"key":"terms","label":"위 이용 약관 전문(회원 준수사항·유효기간·홀딩 규정)에 동의합니다.","required":true,"group":"core"},
-{"key":"refund","label":"환불·양도 규정(정상가 일할 환불, 위약금 10% 한도) 및 중도해지 권리(방문판매법 §31)를 충분히 이해하였으며 이에 동의합니다.","required":true,"group":"core"},
-{"key":"privacy","label":"개인정보(이름·연락처·생년월일·주소·결제정보)의 수집·이용에 동의합니다. (필수, 보유 5년, 거부 시 계약 불가)","required":true,"group":"privacy"},
+{"key":"terms","label":"위 PT & 골프 이용 약관 전문에 동의합니다.","required":true,"group":"core"},
+{"key":"refund","label":"환불 및 양도 규정(위약금 10%, 카드수수료 5%, 회당 정상가 공제 등)을 충분히 이해하였으며 이에 동의합니다.","required":true,"group":"core"},
+{"key":"privacy","label":"서비스 제공·회원관리를 위한 개인정보(이름·연락처·생년월일·주소) 수집·이용에 동의합니다.","required":true,"group":"privacy"},
 {"key":"privacy_third","label":"결제대행사·세무신고 등 법정 의무 이행을 위한 최소 정보의 제3자 제공에 동의합니다.","required":true,"group":"privacy"},
-{"key":"health","label":"운동 중 발생 가능한 위험을 인지하였으며, 본인의 건강상태(질환·부상 등 민감정보)를 사실대로 고지하였음을 확인합니다.","required":true,"group":"sensitive"},
+{"key":"health","label":"본인의 건강상태(질환·부상 등)에 대해 사실대로 고지하였으며, 운동 중 발생할 수 있는 위험을 인지하고 있음을 확인합니다.","required":true,"group":"sensitive"},
 {"key":"single_use","label":"(골프) 골프 타석은 회원 1인 단독 이용이 원칙임을 확인합니다.","required":false,"group":"facility"},
 {"key":"locker","label":"사물함 이용료 및 만료 후 보관·폐기 규정을 확인하였습니다.","required":false,"group":"facility"},
-{"key":"marketing","label":"(선택) 마케팅·이벤트·프로모션 정보 수신(카카오톡/SMS)에 동의합니다.","required":false,"group":"marketing"}
+{"key":"marketing","label":"(선택) 마케팅·이벤트·프로모션 정보 수신에 동의합니다.","required":false,"group":"marketing"}
 ]$ag$::jsonb,
 $pj$ {
-  "items": ["이름","휴대폰번호","생년월일","주소(선택)","이메일(선택)","결제정보","건강상태(민감정보)"],
-  "purpose": "회원 관리·서비스 제공·예약/결제 처리·안전사고 대응·분쟁 시 증빙",
-  "retention": "전자상거래법 §6에 따라 계약·결제 기록 5년, 분쟁처리 3년",
-  "third_party": ["결제대행사(카드사)","세무신고 대행"],
-  "marketing_retention": "서비스 종료일로부터 1년"
+  "items": ["이름","휴대폰번호","생년월일","주소","결제정보"],
+  "purpose": "회원 관리·서비스 제공·예약/결제 처리·안전사고 대응",
+  "retention": "회원자격 유지기간 및 관계법령 보존기간(전자상거래법 5년 등)",
+  "third_party": ["결제대행사","세무신고 대행"]
 } $pj$::jsonb,
 $rp$ {
-  "max_penalty_pct": 10,
-  "penalty_base": "결제금액",
-  "unit_price_basis": "정상가",
-  "deductions": ["이용 회차/일수 × 정상가","위약금(결제금액 10% 이내)","카드수수료 실비","사은품 가액"],
-  "legal_basis": ["방문판매법 §31","공정위 표준약관 제10095호","전자상거래법 §6"]
+  "penalty_pct": 10,
+  "card_fee_pct": 5,
+  "deductions": ["(타석 이용권) 등록일~해지일 일수 × 1회 이용료 35,000원","(레슨/PT 이용권) 1회 정상가 × 이용횟수","사은품 및 서비스 가액"]
 } $rp$::jsonb)
-on conflict (contract_type, version) do nothing;
+on conflict (contract_type, version) do update set
+  title              = excluded.title,
+  body_html          = excluded.body_html,
+  agreements_json    = excluded.agreements_json,
+  privacy_json       = excluded.privacy_json,
+  refund_policy_json = excluded.refund_policy_json;
 
 -- (2) PT 단독 v2
 insert into public.contract_templates (contract_type, version, title, body_html, agreements_json, privacy_json, refund_policy_json)
@@ -855,9 +848,9 @@ $tpl$
 
 <h3>1. 회원 준수사항</h3>
 <ol>
-<li>회원은 레슨 유효기간 및 예약 일자 · 시간을 엄수하여 기간 내 사용하여야 합니다. 운영시간 및 휴무일은 센터 공지에 따릅니다.</li>
+<li>내셔널짐 회원은 레슨 유효기간 및 예약 일자 · 시간을 엄수하여 기간 내 사용하여야 합니다. 운영시간 및 휴무일은 센터 공지에 따릅니다.</li>
 <li>예약 변경은 최소 12시간 전까지 가능하며, 당일 취소 또는 무단 결석 시 해당 레슨은 진행된 것으로 간주합니다.</li>
-<li>센터의 제반시설 이용 중 발생한 불가항력적 사유, 사전 통보되지 않은 질병, 본인의 과실 또는 귀책 사유로 인한 사고 시 본 센터는 책임을 지지 않습니다.</li>
+<li>센터의 제반시설 이용 중 발생한 불가항력적 사유, 센터 측에 사전 통보되지 않은 질병, 본인의 과실 또는 귀책 사유로 인한 사고 시 본 센터는 책임을 지지 않습니다.</li>
 <li>귀중품은 안내 데스크에 보관하여야 하며, 보관하지 않은 개인 물품의 분실 · 멸실 · 훼손에 대해서는 회원 본인이 책임을 집니다.</li>
 <li>개인 사물함 이용기간이 만료된 후에도 남아있는 물품은 센터 측에서 회수 후 7일간 보관하며 이후에는 임의 폐기할 수 있습니다. 개인 사물함 비용은 1개월당 1만원이며, 환불 시 공제되지 않습니다.</li>
 <li>회원의 안전 및 원활한 센터 이용을 위해 본 약관과 운영규정을 위반하거나 전염병 · 풍기문란 · 사고 및 영업에 방해를 끼치는 모든 행위로 질서 유지에 지장을 초래한 경우 회원의 권리를 제한 · 박탈합니다.</li>
@@ -866,85 +859,91 @@ $tpl$
 <li>센터 혹은 담당 트레이너의 사정으로 레슨이 불가능할 시 다른 트레이너로 변경될 수 있으며, 이는 환불의 사유에 해당하지 않습니다.</li>
 </ol>
 
-<h3>2. 유효기간 및 홀딩</h3>
+<h3>2. 유효기간 및 개인 운동 기간</h3>
 <table>
-<thead><tr><th>레슨 횟수</th><th>유효기간</th><th>홀딩 기간</th><th>홀딩 횟수</th></tr></thead>
+<thead><tr><th>레슨 횟수</th><th>유효기간</th></tr></thead>
 <tbody>
-<tr><td>10회</td><td>40일</td><td>최대 7일</td><td>1회</td></tr>
-<tr><td>20회</td><td>80일</td><td>최대 21일</td><td>2회</td></tr>
-<tr><td>30회</td><td>120일</td><td>최대 30일</td><td>2회</td></tr>
+<tr><td>10회</td><td>40일</td></tr>
+<tr><td>20회</td><td>80일</td></tr>
+<tr><td>30회</td><td>120일</td></tr>
 </tbody>
 </table>
 
-<h3 class="hl-refund">3. 환불 · 양도 <span class="hl-tag">중요</span></h3>
-<p class="hl-box">「방문판매법」 제31조에 따라 회원은 언제든 중도해지가 가능하며, 「체력단련장 이용 표준약관」(공정위 제10095호)에 따라 환불액 계산 시 <b>정상가 기준</b>으로 산정합니다. <b>위약금은 결제금액의 10%를 초과할 수 없습니다</b>.</p>
+<h3>3. 홀딩 기간</h3>
 <ul>
-<li><b>환불 공식</b>: 환불액 = 결제금액 − (1회 정상가 × 이용횟수) − 위약금(결제금액 10% 이내) − 카드 수수료(실비) − 사은품 가액</li>
-<li>양도는 30일 이상 잔여기간이 남아있을 때에 한하여 1회만 가능하며 양도수수료는 5만원입니다. (1회 양도 이후 환불 / 재양도 / 휴회 불가)</li>
+<li>이용권 홀딩 기간은 최대 10회 7일, 20회 21일, 30회 30일입니다.</li>
+<li>유효기간 내 10회는 1회, 20회 및 30회는 2회에 한 해 홀딩 요청이 가능합니다.</li>
+</ul>
+
+<h3>4. 환불 및 양도</h3>
+<ul>
+<li>원칙상 환불은 불가하나 불가피한 사유가 발생한 경우 증빙 서류 제출 및 센터 승인을 통해 소비자 피해 보상 규정에 따라 환불 처리됩니다.</li>
+<li><b>환불 공제금액</b>: 결제금액 − 위약금 10% − 카드 수수료 5% − (1회 정상가 × 이용횟수) − 사은품 및 서비스 공제</li>
+<li>양도는 30일 이상 잔여기간이 남아있을 때에 한하여 1회만 가능하며 양도수수료는 5만원이 발생됩니다. (단, 1회 양도 이후 환불 / 재양도 / 휴회 적용 불가)</li>
 <li>본 센터에서는 양도를 주선하거나 소개하지 않습니다.</li>
 </ul>
 
-<h3>4. 개인정보 처리</h3>
-<ul>
-<li>수집 항목: 이름·휴대폰·생년월일·주소(선택)·결제정보·건강상태(민감)</li>
-<li>이용 목적: 회원관리·서비스 제공·예약/결제 처리·안전사고 대응·분쟁 증빙</li>
-<li>보유 기간: 전자상거래법 §6 (5년/3년) 적용, 이후 안전 파기</li>
-<li>동의 거부 권리: 필수 외 거부 가능 / 동의 철회 가능 (법정 보유기간 내 정보는 보존)</li>
-</ul>
+<h3>5. 개인정보 처리</h3>
+<p>수집 항목: 이름 · 휴대폰 · 생년월일 · 주소 · 결제정보 / 이용 목적: 회원관리 · 서비스 제공 · 예약 처리 / 보유 기간: 회원 자격 유지기간 및 관계법령 보존기간.</p>
 
-<h3>5. 분쟁 해결</h3>
-<p>분쟁 시 한국소비자원 분쟁조정 또는 관할 법원의 판결에 따릅니다.</p>
-
-<p style="color:#666;font-size:12px">본 약관 시행일: 2026년 5월 19일 / 표준약관 제10095호 준용</p>
+<p style="color:#666;font-size:12px">본 약관 시행일: 2026년 5월 19일</p>
 $tpl$,
 $ag$[
 {"key":"terms","label":"위 PT 이용 약관 전문에 동의합니다.","required":true,"group":"core"},
-{"key":"refund","label":"환불·양도 규정 및 방문판매법 §31 중도해지권을 확인하였으며 이에 동의합니다.","required":true,"group":"core"},
-{"key":"privacy","label":"개인정보(이름·연락처·생년월일·결제정보) 수집·이용에 동의합니다. (필수, 보유 5년)","required":true,"group":"privacy"},
+{"key":"refund","label":"환불 및 양도 규정(위약금 10%, 카드수수료 5%, 회당 정상가 공제 등)을 충분히 이해하였으며 이에 동의합니다.","required":true,"group":"core"},
+{"key":"privacy","label":"서비스 제공·회원관리를 위한 개인정보(이름·연락처·생년월일·주소) 수집·이용에 동의합니다.","required":true,"group":"privacy"},
 {"key":"privacy_third","label":"결제대행사·세무신고 등 법정 의무 이행을 위한 최소 정보의 제3자 제공에 동의합니다.","required":true,"group":"privacy"},
-{"key":"health","label":"운동 중 발생 가능한 위험을 인지하였으며, 본인의 건강상태를 사실대로 고지하였음을 확인합니다.","required":true,"group":"sensitive"},
-{"key":"marketing","label":"(선택) 마케팅·이벤트 정보 수신(카카오톡/SMS)에 동의합니다.","required":false,"group":"marketing"}
+{"key":"health","label":"본인의 건강상태에 대해 사실대로 고지하였음을 확인합니다.","required":true,"group":"sensitive"},
+{"key":"marketing","label":"(선택) 마케팅 및 이벤트 정보 수신에 동의합니다.","required":false,"group":"marketing"}
 ]$ag$::jsonb,
 $pj$ {
-  "items":["이름","휴대폰번호","생년월일","주소(선택)","결제정보","건강상태(민감정보)"],
-  "purpose":"회원 관리·서비스 제공·예약/결제·안전사고 대응·분쟁 증빙",
-  "retention":"전자상거래법 §6에 따라 5년 / 분쟁 3년",
+  "items":["이름","휴대폰","생년월일","주소","결제정보"],
+  "purpose":"회원관리·서비스 제공·예약 처리",
+  "retention":"회원자격 유지기간 및 관계법령 보존기간(전자상거래법 5년 등)",
   "third_party":["결제대행사","세무신고 대행"]
 } $pj$::jsonb,
 $rp$ {
-  "max_penalty_pct":10,
-  "penalty_base":"결제금액",
-  "unit_price_basis":"정상가",
-  "deductions":["1회 정상가 × 이용횟수","위약금(10%이내)","카드수수료 실비","사은품"]
+  "penalty_pct":10,
+  "card_fee_pct":5,
+  "deductions":["1회 정상가 × 이용횟수","사은품 및 서비스 가액"]
 } $rp$::jsonb)
-on conflict (contract_type, version) do nothing;
+on conflict (contract_type, version) do update set
+  title              = excluded.title,
+  body_html          = excluded.body_html,
+  agreements_json    = excluded.agreements_json,
+  privacy_json       = excluded.privacy_json,
+  refund_policy_json = excluded.refund_policy_json;
 
--- (3) 골프 단독 v2
+-- (3) 골프 단독 v2 — combo 본문 재사용, 동의항목만 골프 위주
 insert into public.contract_templates (contract_type, version, title, body_html, agreements_json, privacy_json, refund_policy_json)
 values ('golf', '2026-05-19', '내셔널짐 골프 레슨 및 이용권 계약서',
 (select body_html from public.contract_templates where contract_type='combo' and version='2026-05-19'),
 $ag$[
 {"key":"terms","label":"위 골프 레슨 및 이용권 약관 전문에 동의합니다.","required":true,"group":"core"},
-{"key":"refund","label":"환불·양도 규정(타석 1회 35,000원 일할 환불, 위약금 10% 한도) 및 중도해지권을 확인하였으며 동의합니다.","required":true,"group":"core"},
-{"key":"privacy","label":"개인정보 수집·이용에 동의합니다. (필수, 보유 5년)","required":true,"group":"privacy"},
-{"key":"privacy_third","label":"결제대행사·세무신고 등 법정 의무 제3자 제공에 동의합니다.","required":true,"group":"privacy"},
+{"key":"refund","label":"환불 및 양도 규정(위약금 10%, 카드수수료 5%, 타석 1회 35,000원 일할 공제 등)을 충분히 이해하였으며 이에 동의합니다.","required":true,"group":"core"},
+{"key":"privacy","label":"서비스 제공·회원관리를 위한 개인정보(이름·연락처·생년월일·주소) 수집·이용에 동의합니다.","required":true,"group":"privacy"},
+{"key":"privacy_third","label":"결제대행사·세무신고 등 법정 의무 이행을 위한 최소 정보의 제3자 제공에 동의합니다.","required":true,"group":"privacy"},
 {"key":"single_use","label":"골프 타석은 회원 1인 단독 이용이 원칙임을 확인합니다.","required":true,"group":"facility"},
 {"key":"locker","label":"골프 사물함 이용료(상단 2만원/하단 3만원) 및 보관·폐기 규정을 확인하였습니다.","required":false,"group":"facility"},
 {"key":"marketing","label":"(선택) 마케팅·이벤트 정보 수신에 동의합니다.","required":false,"group":"marketing"}
 ]$ag$::jsonb,
 $pj$ {
-  "items":["이름","휴대폰번호","생년월일","주소(선택)","결제정보"],
-  "purpose":"회원 관리·서비스 제공·예약/결제·안전사고 대응·분쟁 증빙",
-  "retention":"전자상거래법 §6에 따라 5년 / 분쟁 3년",
+  "items":["이름","휴대폰","생년월일","주소","결제정보"],
+  "purpose":"회원관리·서비스 제공·예약 처리",
+  "retention":"회원자격 유지기간 및 관계법령 보존기간(전자상거래법 5년 등)",
   "third_party":["결제대행사","세무신고 대행"]
 } $pj$::jsonb,
 $rp$ {
-  "max_penalty_pct":10,
-  "penalty_base":"결제금액",
-  "unit_price_basis":"정상가(타석 1회 35,000원)",
-  "deductions":["등록일~해지일 일수 × 35,000원","위약금(10%이내)","카드수수료","사은품"]
+  "penalty_pct":10,
+  "card_fee_pct":5,
+  "deductions":["등록일부터 해지일까지 날짜 × 1회 이용료 35,000원","사은품 및 서비스 가액"]
 } $rp$::jsonb)
-on conflict (contract_type, version) do nothing;
+on conflict (contract_type, version) do update set
+  title              = excluded.title,
+  body_html          = excluded.body_html,
+  agreements_json    = excluded.agreements_json,
+  privacy_json       = excluded.privacy_json,
+  refund_policy_json = excluded.refund_policy_json;
 
 -- 기존 v1 시드를 비활성화하여 새 v2 만 활성으로 사용
 update public.contract_templates set is_active = false
