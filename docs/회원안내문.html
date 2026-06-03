@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>회원 안내문 · 전자계약서 도입 안내</title>
+<style>
+  :root { --green:#1f7a3a; --dark:#0f1f15; --ink:#2b3036; --mut:#54606c; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: #e6ebf0;
+    font-family: -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Pretendard', 'Noto Sans KR', sans-serif;
+    color: var(--ink); line-height: 1.6;
+  }
+  .toolbar {
+    position: sticky; top: 0; background: #fff; padding: 12px 16px;
+    border-bottom: 1px solid #cfd6de; text-align: center;
+  }
+  .toolbar button {
+    padding: 10px 24px; background: var(--green); color: #fff;
+    border: none; border-radius: 8px; font-size: 15px; font-weight: 700; cursor: pointer;
+  }
+  .toolbar span { color: var(--mut); font-size: 13px; margin-right: 16px; }
+
+  .page {
+    width: 210mm; min-height: 297mm; margin: 20px auto; background: #fff;
+    padding: 28mm 24mm; box-shadow: 0 4px 24px rgba(0,0,0,0.12);
+  }
+  .logo {
+    text-align: center; font-size: 13px; letter-spacing: 5px;
+    color: var(--green); font-weight: 700; margin-bottom: 6px;
+  }
+  .headline {
+    text-align: center; font-size: 32px; font-weight: 800;
+    color: var(--dark); letter-spacing: -1px; margin: 8px 0;
+  }
+  .sub {
+    text-align: center; font-size: 16px; color: var(--mut); margin-bottom: 28px;
+  }
+  .divider { height: 3px; background: var(--green); width: 60px; margin: 0 auto 28px; border-radius: 2px; }
+
+  .lead {
+    font-size: 17px; text-align: center; margin: 0 auto 28px; max-width: 480px; color: var(--ink);
+  }
+  .lead b { color: var(--green); }
+
+  .steps {
+    display: flex; justify-content: center; gap: 0; margin: 32px 0;
+  }
+  .step {
+    flex: 1; text-align: center; position: relative; padding: 0 6px;
+  }
+  .step:not(:last-child)::after {
+    content: "→"; position: absolute; right: -8px; top: 18px;
+    color: #cfd6de; font-size: 20px; font-weight: 700;
+  }
+  .step .circle {
+    width: 52px; height: 52px; border-radius: 50%; margin: 0 auto 8px;
+    background: #f4faf6; border: 2px solid var(--green); color: var(--green);
+    font-size: 22px; line-height: 48px; font-weight: 700;
+  }
+  .step .label { font-size: 13px; font-weight: 700; color: var(--dark); }
+  .step .desc { font-size: 11px; color: var(--mut); margin-top: 2px; }
+
+  .benefits {
+    background: #f4faf6; border: 1px solid #c5e8d2; border-radius: 12px;
+    padding: 20px 24px; margin: 28px 0;
+  }
+  .benefits h3 { margin: 0 0 12px; color: var(--green); font-size: 17px; }
+  .benefits ul { margin: 0; padding-left: 4px; list-style: none; }
+  .benefits li { padding: 6px 0; font-size: 15px; padding-left: 28px; position: relative; }
+  .benefits li::before {
+    content: "✓"; position: absolute; left: 0; color: var(--green); font-weight: 800; font-size: 16px;
+  }
+
+  .notice {
+    border-left: 4px solid #b6741f; background: #fff5e1;
+    padding: 14px 18px; border-radius: 8px; margin: 24px 0; font-size: 14px;
+  }
+  .notice b { color: #8b5a18; }
+
+  .legal {
+    font-size: 12px; color: var(--mut); text-align: center;
+    border-top: 1px dashed #cfd6de; padding-top: 16px; margin-top: 28px;
+  }
+  .footer {
+    text-align: center; margin-top: 24px; font-size: 14px; color: var(--dark);
+  }
+  .footer .brand { font-weight: 800; font-size: 16px; color: var(--green); }
+
+  @media print {
+    body { background: #fff; }
+    .toolbar { display: none; }
+    .page { margin: 0; box-shadow: none; width: auto; min-height: auto; padding: 20mm; }
+    @page { size: A4; margin: 0; }
+  }
+</style>
+</head>
+<body>
+
+<div class="toolbar">
+  <span>A4 한 장 · 데스크/입구 게시용</span>
+  <button onclick="window.print()">🖨 인쇄하기</button>
+</div>
+
+<div class="page">
+  <div class="logo">NATIONAL GYM</div>
+  <div class="headline">전자계약서 도입 안내</div>
+  <div class="sub">이제 계약을 휴대폰으로 더 간편하게</div>
+  <div class="divider"></div>
+
+  <p class="lead">
+    내셔널짐은 회원님의 편의를 위해 PT·골프 (재)계약을<br>
+    종이에서 <b>모바일 전자계약</b>으로 전환합니다.
+  </p>
+
+  <div class="steps">
+    <div class="step">
+      <div class="circle">1</div>
+      <div class="label">카톡 링크 수신</div>
+      <div class="desc">계약 링크를 받아요</div>
+    </div>
+    <div class="step">
+      <div class="circle">2</div>
+      <div class="label">본인확인</div>
+      <div class="desc">이름·생일·전화 뒷자리</div>
+    </div>
+    <div class="step">
+      <div class="circle">3</div>
+      <div class="label">약관 확인</div>
+      <div class="desc">내용을 끝까지 확인</div>
+    </div>
+    <div class="step">
+      <div class="circle">4</div>
+      <div class="label">동의 완료</div>
+      <div class="desc">체크하면 끝! (1분)</div>
+    </div>
+  </div>
+
+  <div class="benefits">
+    <h3>이렇게 좋아져요</h3>
+    <ul>
+      <li><b>1분이면 끝</b> — 종이에 쓸 필요 없이 휴대폰으로 간편하게</li>
+      <li><b>계약서 PDF 즉시 발급</b> — 카카오톡으로 받아 보관, 분실 걱정 없음</li>
+      <li><b>언제든 다시 열람</b> — 환불·양도 등 필요할 때 바로 확인</li>
+      <li><b>안전한 보관</b> — 「전자서명법」에 따라 종이와 동일한 법적 효력</li>
+    </ul>
+  </div>
+
+  <div class="notice">
+    <b>📌 안내</b><br>
+    · 다음 (재)계약 시점에 카카오톡으로 링크를 보내드립니다.<br>
+    · 휴대폰 사용이 어려우시면 데스크에서 직원이 도와드립니다.<br>
+    · 링크는 본인만 사용 가능하며, 일정 기간 후 만료됩니다.
+  </div>
+
+  <div class="legal">
+    본 전자계약 시스템은 「전자서명법」 「전자문서법」 「개인정보보호법」 「전자상거래법」 「방문판매법」 및<br>
+    공정거래위원회 「체력단련장 이용 표준약관」을 준수합니다.
+  </div>
+
+  <div class="footer">
+    <div class="brand">NATIONAL GYM</div>
+    <div>문의는 데스크 또는 담당 트레이너·프로에게 말씀해 주세요.</div>
+  </div>
+</div>
+
+</body>
+</html>
