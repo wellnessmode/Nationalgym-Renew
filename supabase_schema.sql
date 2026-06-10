@@ -820,7 +820,7 @@ $ag$[
 {"key":"privacy_third","label":"결제대행사·세무신고 등 법정 의무 이행을 위한 최소 정보의 제3자 제공에 동의합니다.","required":true,"group":"privacy"},
 {"key":"health","label":"본인의 건강상태(질환·부상 등)에 대해 사실대로 고지하였으며, 운동 중 발생할 수 있는 위험을 인지하고 있음을 확인합니다.","required":true,"group":"sensitive"},
 {"key":"single_use","label":"(골프) 골프 타석은 회원 1인 단독 이용이 원칙임을 확인합니다.","required":false,"group":"facility"},
-{"key":"locker","label":"사물함 이용료 및 만료 후 보관·폐기 규정을 확인하였습니다.","required":false,"group":"facility"},
+{"key":"locker","label":"사물함 이용료 및 만료 후 보관·폐기 규정을 확인하였습니다.","required":true,"group":"facility"},
 {"key":"marketing","label":"(선택) 마케팅·이벤트·프로모션 정보 수신에 동의합니다.","required":false,"group":"marketing"}
 ]$ag$::jsonb,
 $pj$ {
@@ -925,7 +925,7 @@ $ag$[
 {"key":"privacy","label":"서비스 제공·회원관리를 위한 개인정보(이름·연락처·생년월일·주소) 수집·이용에 동의합니다.","required":true,"group":"privacy"},
 {"key":"privacy_third","label":"결제대행사·세무신고 등 법정 의무 이행을 위한 최소 정보의 제3자 제공에 동의합니다.","required":true,"group":"privacy"},
 {"key":"single_use","label":"골프 타석은 회원 1인 단독 이용이 원칙임을 확인합니다.","required":true,"group":"facility"},
-{"key":"locker","label":"골프 사물함 이용료(상단 2만원/하단 3만원) 및 보관·폐기 규정을 확인하였습니다.","required":false,"group":"facility"},
+{"key":"locker","label":"골프 사물함 이용료(상단 2만원/하단 3만원) 및 보관·폐기 규정을 확인하였습니다.","required":true,"group":"facility"},
 {"key":"marketing","label":"(선택) 마케팅·이벤트 정보 수신에 동의합니다.","required":false,"group":"marketing"}
 ]$ag$::jsonb,
 $pj$ {

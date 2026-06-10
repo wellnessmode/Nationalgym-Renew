@@ -368,6 +368,7 @@ function buildAgreements() {
     cb.addEventListener('change', () => {
       agreementsMap[a.key] = cb.checked;
       logEvent(cb.checked ? 'consent_checked' : 'consent_unchecked', { key: a.key });
+      syncAllToggle();
       updateConsentState();
       saveProgress('consent');
     });
@@ -379,19 +380,26 @@ function buildAgreements() {
     else $(id).style.display = '';
   });
 
+  // "필수 항목 모두 동의" — 필수만 일괄 체크, 선택(마케팅 등)은 개별 선택
   $('ag-all').checked = false;
   $('ag-all').onchange = () => {
     const all = $('ag-all').checked;
-    document.querySelectorAll('.agreement-row input[type=checkbox]').forEach(cb => {
+    document.querySelectorAll('.agreement-row input[type=checkbox][data-req="1"]').forEach(cb => {
       cb.checked = all;
       agreementsMap[cb.dataset.key] = all;
     });
-    logEvent(all ? 'consent_all_checked' : 'consent_unchecked', { all_toggle: true });
+    logEvent(all ? 'consent_all_checked' : 'consent_unchecked', { required_only: true });
     updateConsentState();
     saveProgress('consent');
   };
 
   updateConsentState();
+}
+
+// 필수 항목이 전부 체크되어 있으면 상단 토글도 체크 상태로 동기화
+function syncAllToggle() {
+  const reqs = document.querySelectorAll('.agreement-row input[type=checkbox][data-req="1"]');
+  $('ag-all').checked = reqs.length > 0 && Array.from(reqs).every(cb => cb.checked);
 }
 
 function updateConsentState() {
