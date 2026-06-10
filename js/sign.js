@@ -23,7 +23,7 @@ let intro = null;       // get_contract_intro 결과
 let contract = null;    // get_contract_for_signing 결과 (본인확인 후)
 let template = null;
 let fpHash = '';
-let termsReady = false; // 스크롤 90% 도달
+let termsReady = false; // 약관 끝까지 스크롤 도달
 let agreementsMap = {}; // {key: checked}
 let agreementsList = []; // 원본 순서
 
