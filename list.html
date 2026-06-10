@@ -75,7 +75,13 @@
       </select>
       <button id="btn-export" class="btn-ghost">📥 CSV</button>
     </div>
-    <div class="toolbar"><span class="muted small" id="count"></span></div>
+    <div class="toolbar flex-between">
+      <span class="muted small" id="count"></span>
+      <span class="toolbar">
+        <button id="btn-backup" class="btn-mini">💾 전체 백업 (PC 저장)</button>
+        <span class="muted small" id="backup-hint"></span>
+      </span>
+    </div>
 
     <div style="overflow-x:auto">
       <table class="data data-list" id="tbl">

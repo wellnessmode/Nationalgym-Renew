@@ -22,7 +22,7 @@
 | 경로 | 용도 |
 |---|---|
 | `admin.html` | 직원: 계약 발송 (Supabase Auth 로그인) |
-| `list.html` | 직원: KPI 대시보드·검색·CSV |
+| `list.html` | 직원: KPI 대시보드·검색·CSV·**전체 백업**(오프라인 열람 가능한 HTML 아카이브 다운로드 — 이중 보관용, `ng_last_backup` localStorage 로 30일 경과 힌트) |
 | `sign.html?t=토큰` | 회원: 5단계 wizard (안내→본인확인→약관→동의→완료) |
 | `view.html?id=..&t=..` | 완료본 + PDF + Certificate of Completion + QR |
 | `manual.html` | 직원 운영 매뉴얼 (인쇄 가능) |
