@@ -306,7 +306,7 @@ function renderPolicies() {
       '<p><b>환불 공제금액</b>: 결제금액 − 위약금 ' + penalty + '% − 카드 수수료 ' + cardFee + '% − 사은품 및 서비스 공제</p>'
       + (deductions ? '<ul class="deduction-list">' + deductions + '</ul>' : '');
   } else {
-    rpBox.innerHTML = '<p class="muted small">약관 §3 환불 조항을 참조해 주세요.</p>';
+    rpBox.innerHTML = '<p class="muted small">약관 제3조(환불·양도) 조항을 참조해 주세요.</p>';
   }
 
   // 개인정보
@@ -322,7 +322,7 @@ function renderPolicies() {
       + '</table>'
       + '<p class="muted small">필수 항목 미동의 시 계약 체결이 불가합니다.</p>';
   } else {
-    pBox.innerHTML = '<p class="muted small">약관 §4 개인정보 조항을 참조해 주세요.</p>';
+    pBox.innerHTML = '<p class="muted small">약관 제4조(개인정보) 조항을 참조해 주세요.</p>';
   }
 }
 
@@ -450,9 +450,8 @@ $('btn-submit').onclick = async () => {
     return;
   }
 
-  // 성공
+  // 성공 (해시 등 검증 정보는 관리자 화면에만 표시)
   clearProgress();
-  $('done-hash').textContent = '문서 무결성 해시 (앞 12자): ' + (data.content_hash || '').slice(0, 12);
   $('view-link').href = './view.html?id=' + data.contract_id + '&t=' + token;
 
   // 카톡 공유 (지원되는 환경에서만)

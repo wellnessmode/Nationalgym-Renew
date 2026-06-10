@@ -745,12 +745,13 @@ order by 1 desc, 2;
 grant select on public.contracts_stats_monthly to authenticated;
 
 -- ===========================================================================
--- 시드 약관 v2 — 본문은 v1 원본 그대로, 분리동의·정책 메타데이터만 v2 구조
+-- 시드 약관 — 본문은 사업장 원문 유지, 분리동의·정책 메타데이터만 v2 구조
 -- ON CONFLICT DO UPDATE: 재실행 시 본문/동의항목 갱신 (created_at은 보존)
+-- 2026-06-10: PT 유효기간 변경 (10회 2개월 / 20회 3개월 / 30회 4개월) — 직원 피드백
 -- ===========================================================================
 
 insert into public.contract_templates (contract_type, version, title, body_html, agreements_json, privacy_json, refund_policy_json)
-values ('combo', '2026-05-19', '내셔널짐 PT & 골프 이용 계약서',
+values ('combo', '2026-06-10', '내셔널짐 PT & 골프 이용 계약서',
 $tpl$
 <p><b>NATIONAL GYM PT &amp; GOLF</b> 이용 약관입니다. 본 계약은 내셔널짐(개인사업자, 이하 "센터")과 회원 사이에 체결됩니다.</p>
 
@@ -782,9 +783,9 @@ $tpl$
 <tr><td rowspan="3">골프 타석</td><td rowspan="3">1회 55분</td><td>1개월</td><td>1개월권 — 7일</td></tr>
 <tr><td>3개월</td><td>3개월권 — 21일</td></tr>
 <tr><td>6개월</td><td>6개월권 — 35일</td></tr>
-<tr><td rowspan="3">PT</td><td rowspan="3">1회 50분</td><td>10회 — 40일</td><td>10회 — 7일</td></tr>
-<tr><td>20회 — 80일</td><td>20회 — 21일</td></tr>
-<tr><td>30회 — 120일</td><td>30회 — 30일</td></tr>
+<tr><td rowspan="3">PT</td><td rowspan="3">1회 50분</td><td>10회 — 2개월</td><td>10회 — 7일</td></tr>
+<tr><td>20회 — 3개월</td><td>20회 — 21일</td></tr>
+<tr><td>30회 — 4개월</td><td>30회 — 30일</td></tr>
 </tbody>
 </table>
 <p>유효기간 내 홀딩 가능 횟수: 10회권 1회, 20회 · 30회권은 2회. (1개월권은 1회, 그 외 이용권은 2회)</p>
@@ -810,7 +811,7 @@ $tpl$
 <li><b>제3자 제공</b>: 결제대행사 · 세무 신고를 위한 최소 정보 외 제공하지 않음</li>
 </ul>
 
-<p style="color:#666;font-size:12px">본 약관 시행일: 2026년 5월 19일</p>
+<p style="color:#666;font-size:12px">본 약관 시행일: 2026년 6월 10일</p>
 $tpl$,
 $ag$[
 {"key":"terms","label":"위 PT & 골프 이용 약관 전문에 동의합니다.","required":true,"group":"core"},
@@ -840,9 +841,9 @@ on conflict (contract_type, version) do update set
   privacy_json       = excluded.privacy_json,
   refund_policy_json = excluded.refund_policy_json;
 
--- (2) PT 단독 v2
+-- (2) PT 단독
 insert into public.contract_templates (contract_type, version, title, body_html, agreements_json, privacy_json, refund_policy_json)
-values ('pt', '2026-05-19', '내셔널짐 PT 이용 계약서',
+values ('pt', '2026-06-10', '내셔널짐 PT 이용 계약서',
 $tpl$
 <p>본 계약은 내셔널짐(개인사업자, 이하 "센터")과 회원 사이의 PT(퍼스널 트레이닝) 이용에 관한 사항을 규정합니다.</p>
 
@@ -863,9 +864,9 @@ $tpl$
 <table>
 <thead><tr><th>레슨 횟수</th><th>유효기간</th></tr></thead>
 <tbody>
-<tr><td>10회</td><td>40일</td></tr>
-<tr><td>20회</td><td>80일</td></tr>
-<tr><td>30회</td><td>120일</td></tr>
+<tr><td>10회</td><td>2개월</td></tr>
+<tr><td>20회</td><td>3개월</td></tr>
+<tr><td>30회</td><td>4개월</td></tr>
 </tbody>
 </table>
 
@@ -886,7 +887,7 @@ $tpl$
 <h3>5. 개인정보 처리</h3>
 <p>수집 항목: 이름 · 휴대폰 · 생년월일 · 주소 · 결제정보 / 이용 목적: 회원관리 · 서비스 제공 · 예약 처리 / 보유 기간: 회원 자격 유지기간 및 관계법령 보존기간.</p>
 
-<p style="color:#666;font-size:12px">본 약관 시행일: 2026년 5월 19일</p>
+<p style="color:#666;font-size:12px">본 약관 시행일: 2026년 6월 10일</p>
 $tpl$,
 $ag$[
 {"key":"terms","label":"위 PT 이용 약관 전문에 동의합니다.","required":true,"group":"core"},
@@ -914,10 +915,10 @@ on conflict (contract_type, version) do update set
   privacy_json       = excluded.privacy_json,
   refund_policy_json = excluded.refund_policy_json;
 
--- (3) 골프 단독 v2 — combo 본문 재사용, 동의항목만 골프 위주
+-- (3) 골프 단독 — combo 본문 재사용, 동의항목만 골프 위주
 insert into public.contract_templates (contract_type, version, title, body_html, agreements_json, privacy_json, refund_policy_json)
-values ('golf', '2026-05-19', '내셔널짐 골프 레슨 및 이용권 계약서',
-(select body_html from public.contract_templates where contract_type='combo' and version='2026-05-19'),
+values ('golf', '2026-06-10', '내셔널짐 골프 레슨 및 이용권 계약서',
+(select body_html from public.contract_templates where contract_type='combo' and version='2026-06-10'),
 $ag$[
 {"key":"terms","label":"위 골프 레슨 및 이용권 약관 전문에 동의합니다.","required":true,"group":"core"},
 {"key":"refund","label":"환불 및 양도 규정(위약금 10%, 카드수수료 5%, 타석 1회 35,000원 일할 공제 등)을 충분히 이해하였으며 이에 동의합니다.","required":true,"group":"core"},
@@ -945,10 +946,11 @@ on conflict (contract_type, version) do update set
   privacy_json       = excluded.privacy_json,
   refund_policy_json = excluded.refund_policy_json;
 
--- 기존 v1 시드를 비활성화하여 새 v2 만 활성으로 사용
+-- 구버전 시드 비활성화 — 최신(2026-06-10)만 활성. 발송/서명된 계약은 template_id 로 시점 고정
 update public.contract_templates set is_active = false
  where (contract_type, version) in (
-   ('combo','2026-04-28'), ('pt','2025-07-25'), ('golf','2026-04-28')
+   ('combo','2026-04-28'), ('pt','2025-07-25'), ('golf','2026-04-28'),
+   ('combo','2026-05-19'), ('pt','2026-05-19'),  ('golf','2026-05-19')
  );
 
 -- ===========================================================================

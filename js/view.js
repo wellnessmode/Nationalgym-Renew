@@ -66,7 +66,9 @@ async function genQR(url) {
 
 async function render(d) {
   const c = d.contract, t = d.template, s = d.signature;
-  const events = Array.isArray(d.audit_events) ? d.audit_events : [];
+  // 관리자(인증) 접근 시에만 RPC 가 audit_events 배열을 반환 — 회원(토큰)은 null
+  const isAdmin = Array.isArray(d.audit_events);
+  const events = isAdmin ? d.audit_events : [];
 
   const items = c.items_json || [];
   const itemRows = items.map(it =>
@@ -83,10 +85,9 @@ async function render(d) {
       + escapeHTML(a.label) + '</li>';
   }).join('');
 
-  // 무결성 정보
-  const hash12 = (c.content_hash || '').slice(0, 12);
+  // 무결성 정보 — 계약번호·해시·QR 은 관리자 화면에만 표시
   const fullUrl = location.origin + location.pathname + '?id=' + c.id + (token ? '&t=' + token : '');
-  const qrData = await genQR(fullUrl);
+  const qrData = isAdmin ? await genQR(fullUrl) : '';
 
   // 감사 이벤트 (관리자에게만 노출됨)
   const auditRows = events.length === 0 ? '' : events.map(e =>
@@ -129,8 +130,10 @@ async function render(d) {
     + '<div class="cover-status">' + statusBadge + '</div>'
     + '<table class="data kv cover-meta">'
     + '<tr><th>계약 일시</th><td>' + fmtDT(c.signed_at) + '</td></tr>'
-    + '<tr><th>계약 번호</th><td class="mono">' + escapeHTML(c.id) + '</td></tr>'
-    + '<tr><th>무결성 해시</th><td class="mono">' + escapeHTML(c.content_hash || '-') + '</td></tr>'
+    + (isAdmin
+      ? '<tr><th>계약 번호</th><td class="mono">' + escapeHTML(c.id) + '</td></tr>'
+        + '<tr><th>무결성 해시</th><td class="mono">' + escapeHTML(c.content_hash || '-') + '</td></tr>'
+      : '')
     + '</table>'
     + (qrData ? '<div class="cover-qr"><img src="' + qrData + '" alt="검증 QR"><p class="muted small">QR로 원본 확인</p></div>' : '')
     + '</section>'
@@ -148,7 +151,7 @@ async function render(d) {
 
     // 약관 스냅샷
     + '<section class="doc-section card">'
-    + '<h2>약관 전문 (동의 시점 박제)</h2>'
+    + '<h2>약관 전문</h2>'
     + '<div class="terms-snapshot">' + s.contract_html_snapshot + '</div>'
     + '</section>'
 
@@ -158,8 +161,9 @@ async function render(d) {
     + '<ul class="agreed-list">' + agreedRows + '</ul>'
     + '</section>'
 
-    // Certificate of Completion
-    + '<section class="doc-section card cert-card">'
+    // Certificate of Completion — 관리자 전용 (회원 화면/PDF 미표시)
+    + (isAdmin
+      ? '<section class="doc-section card cert-card">'
     + '<h2>📋 전자서명 인증서 (Certificate of Completion)</h2>'
     + '<p class="muted small">본 인증서는 「전자서명법」 제3조, 「전자문서법」 제4조에 따라 본 계약의 법적 효력을 증명합니다.</p>'
     + '<table class="data kv cert-meta">'
@@ -169,7 +173,7 @@ async function render(d) {
     + '<tr><th>본인확인 일시</th><td>' + fmtDT(c.identity_verified_at) + '</td></tr>'
     + '<tr><th>약관 확인 완료</th><td>' + fmtDT(c.terms_scrolled_at) + '</td></tr>'
     + '<tr><th>동의·서명 일시</th><td>' + fmtDT(c.signed_at) + '</td></tr>'
-    + '<tr><th>서명 방식</th><td>' + escapeHTML(s.consent_method === 'checkbox' ? '체크박스 전자서명 (전자서명법 §3)' : '손글씨 서명') + '</td></tr>'
+    + '<tr><th>서명 방식</th><td>' + escapeHTML(s.consent_method === 'checkbox' ? '체크박스 전자서명 (전자서명법 제3조)' : '손글씨 서명') + '</td></tr>'
     + '<tr><th>접속 IP</th><td class="mono">' + escapeHTML(s.signer_ip || c.signer_ip || '-') + '</td></tr>'
     + '<tr><th>디바이스 핑거프린트</th><td class="mono">' + escapeHTML((s.signer_fingerprint_hash || c.signer_fingerprint_hash || '').slice(0, 16)) + '...</td></tr>'
     + '<tr><th>User-Agent</th><td class="mono small">' + escapeHTML(s.signer_user_agent || c.signer_user_agent || '-') + '</td></tr>'
@@ -182,6 +186,7 @@ async function render(d) {
     + '「방문판매법」(법률 제17799호), 「체력단련장 이용 표준약관」(공정위 제10095호)을 준수합니다.'
     + '</p>'
     + '</section>'
+      : '')
 
     // 감사 추적 (관리자에게만 노출)
     + (auditRows
@@ -246,8 +251,11 @@ async function render(d) {
         pdf.setPage(i);
         pdf.setFontSize(7);
         pdf.setTextColor(140);
-        pdf.text('NationalGym 전자계약서 · ' + (c.content_hash || '').slice(0, 12) + ' · ' + i + '/' + total,
-          10, pageH - 5);
+        // 해시 워터마크는 관리자용 PDF 에만
+        const mark = isAdmin
+          ? 'NationalGym 전자계약서 · ' + (c.content_hash || '').slice(0, 12) + ' · ' + i + '/' + total
+          : 'NationalGym 전자계약서 · ' + i + '/' + total;
+        pdf.text(mark, 10, pageH - 5);
       }
 
       const filename = 'nationalgym-contract-' + (c.id || '').slice(0, 8) + '-'

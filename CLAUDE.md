@@ -48,9 +48,11 @@
 
 ## 운영 상태 (2026-06-10 기준)
 
-- 코드: 로컬 PostgreSQL 16단계 시뮬레이션 **전부 통과** (digest 수정, 무결성 트리거, rate-limit, 만료, idempotent 재실행 포함 — 절차는 lessons/verify-locally-yourself.md)
-- DB: 대표가 초기 스키마는 실행 완료. **digest 수정본(`extensions.digest`) 재실행 여부 미확인** — 미실행 상태면 회원 제출 단계에서 "function digest does not exist" 재발. 재실행은 안전 (idempotent, 기존 계약·서명 보존 검증됨)
-- 도입 단계: 직원 파일럿 → 본 도입 진행 중 (docs/도입기획서.md)
+- **운영 검증 완료**: 2026-06-09 실제 회원 계약 1건 동의완료 (content_hash·접속 IP 106.101.x.x 정상 기록) — digest 수정본이 운영 DB 에 반영되어 작동 중임이 확인됨
+- 코드: 로컬 PostgreSQL 시뮬레이션 전부 통과 (절차는 lessons/verify-locally-yourself.md)
+- **약관 현행 버전 2026-06-10**: PT 유효기간 변경 (10회 2개월 / 20회 3개월 / 30회 4개월 — 직원 피드백). 이 시드 반영에는 대표의 SQL 재실행 1회 필요. 구버전(2026-05-19)으로 서명된 계약은 template_id·스냅샷으로 보존됨
+- 직원 피드백 반영 (2026-06-10): ① 회원 화면에서 계약번호·해시·IP·인증서 숨김 (관리자 인증 시에만 표시 — view.js `isAdmin = Array.isArray(d.audit_events)`) ② 카톡 문구 "§3"→"제3조" ③ admin 상품 드롭다운 (`config.js PRODUCTS`, '직접 입력' 폴백) ⑤ "약관 전문 (동의 시점 박제)" 제목에서 괄호 제거
+- 도입 단계: 직원 파일럿 완료 → 본 도입 진행 중 (docs/도입기획서.md)
 
 ## 보류 항목 (외부 서비스 필요)
 

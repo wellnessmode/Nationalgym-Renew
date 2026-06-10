@@ -39,6 +39,14 @@ window.NG_CONTRACT_CONFIG = {
   // 지점 목록 (관리자 발송 화면에서 선택). BUSINESS_BY_BRANCH 의 키와 일치해야 함.
   BRANCHES: ['용산점', '서초점'],
 
+  // 관리자 발송 화면 상품 드롭다운 (선택). 비우면 '직접 입력' 만 표시됨.
+  // qty 는 상품 선택 시 자동으로 채워지는 횟수/기간 (이후 수정 가능)
+  PRODUCTS: [
+    { name: 'PT 10회', qty: '10회 / 2개월' },
+    { name: 'PT 20회', qty: '20회 / 3개월' },
+    { name: 'PT 30회', qty: '30회 / 4개월' }
+  ],
+
   // 서명 페이지 절대 URL (배포 후 채움)
   // 카카오톡 메시지에 들어갈 링크의 베이스
   SIGN_BASE_URL: 'https://YOUR-DOMAIN/contract/sign.html'

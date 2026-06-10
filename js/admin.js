@@ -60,18 +60,50 @@ $('btn-logout').onclick = async () => { await sb.auth.signOut(); session = null;
 $('t-type').onchange = refreshTemplate;
 
 // --- items ---
+// 상품은 config.js 의 PRODUCTS 드롭다운에서 선택 (직접 입력도 가능)
 const items = [];
 function renderItems() {
   const root = $('items');
   root.innerHTML = '';
+  const products = cfg.PRODUCTS || [];
   items.forEach((it, i) => {
     const div = document.createElement('div');
     div.className = 'item-row';
+    const isCustom = !!it.name && !products.some(p => p.name === it.name);
+    const opts =
+      '<option value="">— 상품 선택 —</option>' +
+      products.map((p, pi) =>
+        '<option value="' + pi + '"' + (p.name === it.name ? ' selected' : '') + '>' + escapeHTML(p.name) + '</option>'
+      ).join('') +
+      '<option value="custom"' + (isCustom ? ' selected' : '') + '>직접 입력</option>';
     div.innerHTML =
-      '<label>항목명 <input data-k="name" type="text" placeholder="예: PT 30회"></label>' +
+      '<label>상품 <select data-k="product">' + opts + '</select></label>' +
       '<label>횟수/기간 <input data-k="qty" type="text" placeholder="예: 30회 / 4개월"></label>' +
       '<label>금액(원) <input data-k="price" type="number" min="0"></label>' +
-      '<button class="btn-ghost rm" data-rm="' + i + '">삭제</button>';
+      '<button class="btn-ghost rm" data-rm="' + i + '">삭제</button>' +
+      '<label class="custom-name" style="grid-column:1/-1;' + (isCustom ? '' : 'display:none') + '">항목명 직접 입력 <input data-k="name" type="text" placeholder="예: 프로모션 패키지"></label>';
+
+    const sel = div.querySelector('select[data-k=product]');
+    const nameLabel = div.querySelector('.custom-name');
+    const nameInput = nameLabel.querySelector('input');
+    const qtyInput = div.querySelector('input[data-k=qty]');
+
+    sel.onchange = () => {
+      if (sel.value === 'custom') {
+        nameLabel.style.display = '';
+        items[i].name = nameInput.value;
+        nameInput.focus();
+      } else if (sel.value === '') {
+        nameLabel.style.display = 'none';
+        items[i].name = '';
+      } else {
+        const p = products[Number(sel.value)];
+        nameLabel.style.display = 'none';
+        items[i].name = p.name;
+        if (p.qty) { items[i].qty = p.qty; qtyInput.value = p.qty; }
+      }
+    };
+
     div.querySelectorAll('input').forEach(inp => {
       inp.value = it[inp.dataset.k] != null ? it[inp.dataset.k] : '';
       inp.oninput = () => {
@@ -196,7 +228,7 @@ $('btn-create').onclick = async () => {
     '· 휴대폰 끝 4자리: ' + phone.slice(-4) + '\n\n' +
     '▶ 계약서 확인 및 동의\n' + url + '\n\n' +
     '※ 본 링크는 ' + expireDays + '일간 유효하며, 회원님만 사용할 수 있습니다.\n' +
-    '※ 동의·서명 완료 시 「전자서명법」 §3에 따라 서면 계약과 동일한 효력이 발생합니다.\n\n' +
+    '※ 동의·서명 완료 시 「전자서명법」 제3조에 따라 서면 계약과 동일한 효력이 발생합니다.\n\n' +
     '문의: ' + (biz.phone || '');
 
   $('kakao-msg').value = msg;
