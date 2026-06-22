@@ -56,6 +56,7 @@
 - 지점별 약관 분기 인프라 (2026-06-22): `contract_templates.branch` 컬럼. NULL=공통, 값=해당 지점 전용. admin.js `refreshTemplate` 가 `(branch.eq.X or branch.is.null)` + `order branch desc` 로 지점 특화 우선 선택, 없으면 공통 fallback
 - **PT 공통 약관 v2026-06-22** (용산 1호점 + branch 미일치 시 fallback): 매니저 docx 반영 — 운영시간 **평일 06:00–23:00**, 토 10:00–16:00, 일·공휴일 휴무. 유효기간 첫 레슨일 기준 1년(횟수별 표·홀딩 없음), 짐 이용권 조항, 환불 공제 = 1회 정상가 × 기제공 레슨(유·무료 포함). 구버전 pt 2026-06-10(횟수별 2/3/4개월 표+홀딩)은 비활성
 - **PT 서초 2호점 전용 약관 v2026-06-22-seocho** (2026-06-22 추가, 분기 인프라 첫 실 사용): 공통과 동일하되 **운영시간만 평일 07:00–22:00** (토·일·공휴일 동일). 서초 발송 시 admin.js 가 자동 선택해 [서초 2호점 전용] 배지 표시
+- **지점별 접근 제어 (2026-06-22, RLS)**: 직원은 자기 지점 계약만 조회·발송 가능. JWT `app_metadata` 기반 — `{"role":"admin"}`(대표=전 지점) 또는 `{"branches":["지점키"]}`(지점 직원). RLS 헬퍼 `can_access_branch()` + 정책이 contracts(+ contract_id 로 signatures·audit)·KPI 뷰(`security_invoker=on`) 까지 서버측 차단. 발송(INSERT)도 `with check` 로 타 지점 차단. 회원 서명 플로우는 `security definer` RPC 라 무영향. **app_metadata 는 SQL 로만 부여**(supabase_schema.sql 하단 "직원 지점 권한" 섹션), 변경 후 직원 재로그인 필요. list.js·admin.js 드롭다운도 내 지점만 노출(서버 RLS 가 최종 차단, UI 는 거울). list.html 전체 백업도 자동으로 자기 지점만 포함됨. 구 지점키 계약은 스키마의 마이그레이션 UPDATE 로 신 키 흡수
 - 도입 단계: 직원 파일럿 완료 → 본 도입 진행 중 (docs/도입기획서.md)
 
 ## 보류 항목 (외부 서비스 필요)

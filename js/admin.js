@@ -63,14 +63,27 @@ function escapeHTML(s) {
     ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 
-async function init() {
-  const branches = (cfg.BRANCHES && cfg.BRANCHES.length) ? cfg.BRANCHES : ['본점'];
-  $('branch').innerHTML = branches.map(b => '<option>' + escapeHTML(b) + '</option>').join('');
-  refreshTypeOptions();   // 기본 선택 지점에 맞는 약관 종류로 초기화
+// 로그인 직원이 발송 가능한 지점 (JWT app_metadata 기반; admin 이면 전체)
+// 타 지점 발송은 RLS with check 가 최종 차단, 이 목록은 UI 잠금용.
+function allowedBranches() {
+  const meta = (session && session.user && session.user.app_metadata) || {};
+  if (meta.role === 'admin') return (cfg.BRANCHES || []).slice();
+  return Array.isArray(meta.branches) ? meta.branches.slice() : [];
+}
 
+// 로그인 후 발송 지점 드롭다운 구성 + 약관 종류 초기화 (세션 확정 후 호출)
+function populateBranches() {
+  const mine = allowedBranches();
+  $('branch').innerHTML = mine.length
+    ? mine.map(b => '<option>' + escapeHTML(b) + '</option>').join('')
+    : '<option value="">(지점 미지정 — 관리자에게 권한 요청)</option>';
+  refreshTypeOptions();   // 선택된 지점에 맞는 약관 종류로 초기화
+}
+
+async function init() {
   const { data } = await sb.auth.getSession();
   session = data.session;
-  if (session) { showApp(); await refreshTemplate(); } else { showLogin(); }
+  if (session) { populateBranches(); showApp(); await refreshTemplate(); } else { showLogin(); }
   renderItems();
 }
 
@@ -80,7 +93,7 @@ $('btn-login').onclick = async () => {
   $('login-err').textContent = '';
   const { data, error } = await sb.auth.signInWithPassword({ email, password: pw });
   if (error) { $('login-err').textContent = error.message; return; }
-  session = data.session; showApp(); await refreshTemplate();
+  session = data.session; populateBranches(); showApp(); await refreshTemplate();
 };
 $('btn-logout').onclick = async () => { await sb.auth.signOut(); session = null; showLogin(); };
 $('t-type').onchange = refreshTemplate;

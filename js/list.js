@@ -11,15 +11,25 @@ const STATUS_LABEL = {
   signed: '동의완료', expired: '만료', canceled: '취소'
 };
 
-async function init() {
-  const branches = cfg.BRANCHES || [];
-  $('filter-branch').innerHTML = '<option value="">전체 지점</option>'
-    + branches.map(b => '<option>' + escapeHTML(b) + '</option>').join('');
+// 로그인 직원이 접근 가능한 지점 (JWT app_metadata 기반; admin 이면 전체)
+// 실제 차단은 서버 RLS 가 수행, 이 목록은 UI 를 그에 맞추기 위한 것.
+function allowedBranches() {
+  const meta = (session && session.user && session.user.app_metadata) || {};
+  if (meta.role === 'admin') return (cfg.BRANCHES || []).slice();
+  return Array.isArray(meta.branches) ? meta.branches.slice() : [];
+}
 
+async function init() {
   const { data } = await sb.auth.getSession();
   session = data.session;
   if (!session) { $('login').style.display='block'; $('app').style.display='none'; return; }
   $('login').style.display='none'; $('app').style.display='block';
+
+  // 지점 필터에는 내 지점만 노출 (RLS 가 최종 차단하므로 UI 는 혼란 방지용 거울)
+  const mine = allowedBranches();
+  $('filter-branch').innerHTML = '<option value="">전체 지점</option>'
+    + mine.map(b => '<option>' + escapeHTML(b) + '</option>').join('');
+
   load();
 }
 $('btn-login').onclick = async () => {

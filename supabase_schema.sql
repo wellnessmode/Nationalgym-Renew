@@ -247,22 +247,71 @@ create trigger signatures_no_update before update on public.contract_signatures
   for each row execute function public.signatures_immutable();
 
 -- ===========================================================================
--- RLS — 인증 관리자만 직접 접근. 비인증은 RPC 만 허용
+-- RLS — 인증 직원은 "자기 지점" 계약만, 비인증은 RPC(security definer) 만 허용
+--   app_metadata.role='admin' → 전 지점 / 그 외 → app_metadata.branches 배열 포함 지점만.
+--   app_metadata 는 service_role·SQL 로만 수정 가능(직원이 토큰을 위조해도 변경 불가).
+--   ※ 직원 계정별 지점 부여 SQL 은 파일 하단 "직원 지점 권한" 섹션 참고.
 -- ===========================================================================
 alter table public.contract_templates  enable row level security;
 alter table public.contracts           enable row level security;
 alter table public.contract_signatures enable row level security;
 alter table public.contract_audit_log  enable row level security;
 
-drop policy if exists "auth all contracts"  on public.contracts;
-drop policy if exists "auth all templates"  on public.contract_templates;
-drop policy if exists "auth all signatures" on public.contract_signatures;
-drop policy if exists "auth all audit"      on public.contract_audit_log;
+-- 현재 로그인 직원이 해당 지점을 볼 수 있는가 (JWT app_metadata 기반)
+create or replace function public.can_access_branch(p_branch text)
+returns boolean
+language sql
+stable
+as $$
+  select
+    coalesce(auth.jwt() -> 'app_metadata' ->> 'role', '') = 'admin'
+    or (
+      p_branch is not null
+      and p_branch = any (
+        select jsonb_array_elements_text(
+          coalesce(auth.jwt() -> 'app_metadata' -> 'branches', '[]'::jsonb)
+        )
+      )
+    );
+$$;
+grant execute on function public.can_access_branch(text) to authenticated;
 
-create policy "auth all contracts"  on public.contracts           for all to authenticated using (true) with check (true);
-create policy "auth all templates"  on public.contract_templates  for all to authenticated using (true) with check (true);
-create policy "auth all signatures" on public.contract_signatures for all to authenticated using (true) with check (true);
-create policy "auth all audit"      on public.contract_audit_log  for all to authenticated using (true) with check (true);
+drop policy if exists "auth all contracts"      on public.contracts;
+drop policy if exists "auth all templates"       on public.contract_templates;
+drop policy if exists "auth all signatures"      on public.contract_signatures;
+drop policy if exists "auth all audit"           on public.contract_audit_log;
+drop policy if exists "branch scoped contracts"  on public.contracts;
+drop policy if exists "branch scoped signatures" on public.contract_signatures;
+drop policy if exists "branch scoped audit"      on public.contract_audit_log;
+
+-- 계약: 자기 지점만 (조회·발송 공통). with check 가 타 지점 발송(INSERT)도 차단.
+create policy "branch scoped contracts" on public.contracts
+  for all to authenticated
+  using (public.can_access_branch(branch))
+  with check (public.can_access_branch(branch));
+
+-- 약관 템플릿: PII 아님 + 공통(branch IS NULL) fallback 노출 필요 → 인증 직원 모두 열람.
+create policy "auth all templates" on public.contract_templates
+  for all to authenticated using (true) with check (true);
+
+-- 서명/감사: 자체 branch 컬럼 없음 → 부모 계약(contract_id)의 지점으로 스코프.
+create policy "branch scoped signatures" on public.contract_signatures
+  for all to authenticated
+  using (exists (select 1 from public.contracts c
+                  where c.id = contract_signatures.contract_id
+                    and public.can_access_branch(c.branch)))
+  with check (exists (select 1 from public.contracts c
+                  where c.id = contract_signatures.contract_id
+                    and public.can_access_branch(c.branch)));
+
+create policy "branch scoped audit" on public.contract_audit_log
+  for all to authenticated
+  using (exists (select 1 from public.contracts c
+                  where c.id = contract_audit_log.contract_id
+                    and public.can_access_branch(c.branch)))
+  with check (exists (select 1 from public.contracts c
+                  where c.id = contract_audit_log.contract_id
+                    and public.can_access_branch(c.branch)));
 
 -- ===========================================================================
 -- 헬퍼: 요청 IP 추출 (서버사이드)
@@ -733,8 +782,12 @@ grant execute on function public.expire_old_contracts() to authenticated;
 
 -- ===========================================================================
 -- 관리자용 통계 뷰
+--   security_invoker=on: 뷰가 조회 직원의 권한(RLS)으로 실행 → 자기 지점 통계만 집계.
+--   (미설정 시 뷰 소유자 권한으로 RLS 우회 → 타 지점 건수·서명액 유출됨)
 -- ===========================================================================
-create or replace view public.contracts_stats_monthly as
+create or replace view public.contracts_stats_monthly
+  with (security_invoker = on)
+as
 select
   date_trunc('month', created_at)::date as month,
   branch,
@@ -1028,6 +1081,34 @@ update public.contract_templates set is_active = false
  );
 
 -- ===========================================================================
+-- 구 지점키 → 신 지점키 마이그레이션 (2026-06-22 지점명 변경 반영)
+--   branch 는 immutable 트리거 차단 대상이 아니므로 서명완료 계약도 안전하게 갱신.
+--   idempotent: 재실행 시 매칭 0건. 지점별 RLS 가 구키 계약을 놓치지 않도록 필수.
+-- ===========================================================================
+update public.contracts set branch = '용산 1호점'      where branch = '용산점';
+update public.contracts set branch = '서초 2호점'      where branch = '서초점';
+update public.contracts set branch = '피티앤골프 3호점' where branch = '골프스튜디오';
+
+-- ===========================================================================
+-- 직원 지점 권한 (대표가 실제 이메일로 1회 실행 — 아래는 예시이므로 주석 처리)
+--   app_metadata 는 service_role·SQL 로만 수정 가능. 변경 후 해당 직원 "재로그인" 필요
+--   (JWT 는 로그인 시점에 발급되므로 기존 세션엔 즉시 반영 안 됨).
+--   · 대표/본사(전 지점):  {"role":"admin"}
+--   · 지점 직원:           {"branches":["<지점키>"]}   (지점키 = config.js BRANCHES)
+--   권한 회수/변경도 같은 방식으로 raw_app_meta_data 를 덮어쓰면 됨.
+-- ---------------------------------------------------------------------------
+-- update auth.users set raw_app_meta_data = coalesce(raw_app_meta_data,'{}'::jsonb) || '{"role":"admin"}'::jsonb
+--   where email = 'ceo@nationalgym.kr';
+-- update auth.users set raw_app_meta_data = coalesce(raw_app_meta_data,'{}'::jsonb) || '{"branches":["용산 1호점"]}'::jsonb
+--   where email = '<용산 직원 이메일>';
+-- update auth.users set raw_app_meta_data = coalesce(raw_app_meta_data,'{}'::jsonb) || '{"branches":["서초 2호점"]}'::jsonb
+--   where email = '<서초 직원 이메일>';
+-- update auth.users set raw_app_meta_data = coalesce(raw_app_meta_data,'{}'::jsonb) || '{"branches":["피티앤골프 3호점"]}'::jsonb
+--   where email = '<피티앤골프 직원 이메일>';
+-- 확인: select email, raw_app_meta_data from auth.users order by created_at;
+
+-- ===========================================================================
 -- 끝
--- 적용 후 Authentication > Users 메뉴에서 관리자 계정을 추가하세요.
+-- 적용 후 Authentication > Users 메뉴에서 직원 계정을 추가하고,
+-- 위 "직원 지점 권한" 섹션으로 각 계정에 지점(또는 admin)을 부여하세요.
 -- ===========================================================================
