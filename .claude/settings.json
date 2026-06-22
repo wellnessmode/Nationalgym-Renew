@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Write(**/*.md)",
+      "Edit(**/*.md)",
+      "Write(.claude/**/*.md)",
+      "Edit(.claude/**/*.md)"
+    ]
+  }
+}
