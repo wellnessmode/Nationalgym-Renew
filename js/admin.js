@@ -19,17 +19,25 @@ function showApp() {
 
 async function refreshTemplate() {
   const type = $('t-type').value;
+  const branch = $('branch').value;
   $('tpl-info').textContent = '약관 정보 조회 중...';
+  // 1순위: 해당 지점 전용 활성 약관, 2순위: 공통(branch IS NULL) 활성 약관
   const { data, error } = await sb.from('contract_templates')
-    .select('id,version,title,effective_from')
+    .select('id,version,title,effective_from,branch')
     .eq('contract_type', type).eq('is_active', true)
+    .or('branch.eq.' + branch + ',branch.is.null')
+    .order('branch', { ascending: false, nullsFirst: false })   // 지점 일치(non-null) 먼저
     .order('effective_from', { ascending: false }).limit(1);
   if (error) { $('tpl-info').textContent = '약관 조회 오류: ' + error.message; activeTemplate = null; return; }
   if (!data || !data.length) { $('tpl-info').textContent = '활성 약관 없음. supabase_schema.sql 의 시드를 실행하세요.'; activeTemplate = null; return; }
   activeTemplate = data[0];
+  const scope = activeTemplate.branch
+    ? '<span class="badge-info" style="background:#fff3cd;color:#996600">' + escapeHTML(activeTemplate.branch) + ' 전용</span>'
+    : '<span class="badge-info">공통</span>';
   $('tpl-info').innerHTML =
     '✓ 활성 약관: <b>' + escapeHTML(activeTemplate.title) + '</b> '
-    + '<span class="badge-info">v' + escapeHTML(activeTemplate.version) + '</span>'
+    + '<span class="badge-info">v' + escapeHTML(activeTemplate.version) + '</span> '
+    + scope
     + ' · 시행일 ' + new Date(activeTemplate.effective_from).toLocaleDateString('ko-KR');
 }
 
@@ -58,6 +66,7 @@ $('btn-login').onclick = async () => {
 };
 $('btn-logout').onclick = async () => { await sb.auth.signOut(); session = null; showLogin(); };
 $('t-type').onchange = refreshTemplate;
+$('branch').onchange = refreshTemplate;
 
 // --- items ---
 // 상품은 config.js 의 PRODUCTS 드롭다운에서 선택 (직접 입력도 가능)

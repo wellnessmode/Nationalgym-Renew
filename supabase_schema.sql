@@ -60,6 +60,7 @@ create table if not exists public.contract_templates (
   agreements_json jsonb not null default '[]'::jsonb,
   privacy_json    jsonb not null default '{}'::jsonb,
   refund_policy_json jsonb not null default '{}'::jsonb,
+  branch          text,
   is_active       boolean not null default true,
   effective_from  timestamptz not null default now(),
   created_at      timestamptz not null default now(),
@@ -70,6 +71,11 @@ alter table public.contract_templates
   add column if not exists privacy_json jsonb not null default '{}'::jsonb;
 alter table public.contract_templates
   add column if not exists refund_policy_json jsonb not null default '{}'::jsonb;
+-- branch: null 이면 모든 지점 공통, 값이 있으면 해당 지점에서만 사용 (지점 특화 약관)
+alter table public.contract_templates
+  add column if not exists branch text;
+create index if not exists templates_type_branch_idx
+  on public.contract_templates(contract_type, branch, is_active);
 
 -- ===========================================================================
 -- 2) 계약 인스턴스
@@ -952,6 +958,78 @@ update public.contract_templates set is_active = false
    ('combo','2026-04-28'), ('pt','2025-07-25'), ('golf','2026-04-28'),
    ('combo','2026-05-19'), ('pt','2026-05-19'),  ('golf','2026-05-19')
  );
+
+-- ===========================================================================
+-- (4) 서초점 전용 PT 약관 — 매니저 요청 본문
+--     운영시간 명시, 유효기간 1년 단일, 홀딩/홀딩표 없음, 짐 이용권 표현
+-- ===========================================================================
+insert into public.contract_templates (contract_type, version, title, body_html,
+  agreements_json, privacy_json, refund_policy_json, branch)
+values ('pt', '2026-06-22-seocho', '내셔널짐 PT 이용 계약서 (서초점)',
+$tpl$
+<p>본 계약은 내셔널짐(개인사업자, 이하 "센터")과 회원 사이의 PT(퍼스널 트레이닝) 이용에 관한 사항을 규정합니다.</p>
+
+<h3>1. 운영시간</h3>
+<ul>
+<li>평일: 06:00 - 23:00 / 토요일: 10:00 - 16:00</li>
+<li>일요일 및 공휴일 휴무 (단, 센터 운영상 영업시간 및 영업일을 조정할 수 있음)</li>
+</ul>
+
+<h3>2. 회원 준수사항</h3>
+<ol>
+<li>내셔널짐 회원은 레슨 유효기간, 예약 일자 및 시간을 엄수하여 중단 없이 사용하여야 합니다.</li>
+<li>레슨은 50분간 진행됩니다.</li>
+<li>예약 변경은 12시간 전에 이루어져야 하며, 무단결석 및 당일 취소 건에 한해서 레슨은 진행된 것으로 간주합니다.</li>
+<li>레슨 유효기간은 첫 레슨 시작일을 기준으로 1년이며, 담당 트레이너와의 상의 없이 유효기간 내 사용하지 못할 경우 잔여 횟수에 관계없이 모두 진행된 것으로 간주합니다.</li>
+<li>센터의 제반시설을 이용함에 있어 불가항력적인 이유, 센터 측에 공지하지 않은 질병, 본인의 귀책 사유로 인한 사고시에 본 센터는 책임을 지지 않습니다.</li>
+<li>귀중품은 안내 데스크에 보관하여야 하며, 보관하지 않은 물품의 분실 · 멸실 · 훼손은 회원 본인이 책임을 집니다.</li>
+<li>개인 사물함의 이용 기간이 만료된 후에도 남아있는 물품은 센터 측에서 회수 후 7일간 보관하며 이후에는 폐기합니다. 개인 사물함 비용은 10회당 1만 원이며, 환불 시 공제되지 않습니다.</li>
+<li>회원의 안전과 원활한 센터 이용을 위해 본 약관과 운영규정을 위반하거나 전염병 · 풍기문란 · 사고 및 영업에 방해를 끼치는 모든 행위 등으로 질서 유지에 지장을 초래한 경우 회원의 권리를 제한 및 박탈합니다.</li>
+<li>시설물 및 대여 물품에 대하여 고의 또는 부주의로 훼손 · 파괴했을 경우 당사자가 책임을 집니다.</li>
+<li>센터 운영상 필요에 따라(퇴사, 인사이동) 담당 트레이너는 변경될 수 있으며, 담당 트레이너 변경은 계약 해지 또는 환불 사유에 해당하지 않습니다. 본인은 담당 트레이너 변경이 환불 사유가 되지 않음을 충분히 이해하였으며, 이에 대해 어떠한 이의도 제기하지 않을 것을 확인합니다.</li>
+<li>무료로 제공되는 짐 이용권은 센터 정기 휴무일, 임시 휴무일, 법정 공휴일과 관계없이 이용 기간은 연속적으로 차감되며, 개인 사정으로 인한 미사용에 대해서 별도의 보상이나 휴회, 홀딩, 기간 연장이 불가능합니다.</li>
+</ol>
+
+<h3>3. 환불 및 양도</h3>
+<ul>
+<li>원칙상 환불은 불가하나 불가피한 사유가 발생한 경우 증빙 서류 제출 및 센터 승인을 통해 소비자 피해 보상 규정에 따라 환불 처리됩니다.</li>
+<li><b>환불 공제금액</b>: 결제금액 − 위약금 10% − 카드 수수료 5% − (1회 정상가 × 기제공 레슨(유·무료 포함))</li>
+<li>양도는 유효기간 내에 1회만 가능하며 양도수수료는 5만 원이 발생됩니다. (단, 1회 양도 이후 환불 / 재양도 / 휴회 적용 불가)</li>
+<li>본 센터에서는 양도를 주선하거나 소개하지 않습니다.</li>
+</ul>
+
+<h3>4. 개인정보 처리</h3>
+<p>수집 항목: 이름 · 휴대폰 · 생년월일 · 주소 · 결제정보 / 이용 목적: 회원관리 · 서비스 제공 · 예약 처리 / 보유 기간: 회원 자격 유지기간 및 관계법령 보존기간.</p>
+
+<p style="color:#666;font-size:12px">본 약관 시행일: 2026년 6월 22일 · 서초점 전용</p>
+$tpl$,
+$ag$[
+{"key":"terms","label":"위 PT 이용 약관 전문(운영시간·회원 준수사항 포함)에 동의합니다.","required":true,"group":"core"},
+{"key":"refund","label":"환불 및 양도 규정(위약금 10%, 카드수수료 5%, 1회 정상가 × 기제공 레슨 공제 등)을 충분히 이해하였으며 이에 동의합니다.","required":true,"group":"core"},
+{"key":"privacy","label":"서비스 제공·회원관리를 위한 개인정보(이름·연락처·생년월일·주소) 수집·이용에 동의합니다.","required":true,"group":"privacy"},
+{"key":"privacy_third","label":"결제대행사·세무신고 등 법정 의무 이행을 위한 최소 정보의 제3자 제공에 동의합니다.","required":true,"group":"privacy"},
+{"key":"health","label":"본인의 건강상태에 대해 사실대로 고지하였음을 확인합니다.","required":true,"group":"sensitive"},
+{"key":"marketing","label":"(선택) 마케팅 및 이벤트 정보 수신에 동의합니다.","required":false,"group":"marketing"}
+]$ag$::jsonb,
+$pj$ {
+  "items":["이름","휴대폰","생년월일","주소","결제정보"],
+  "purpose":"회원관리·서비스 제공·예약 처리",
+  "retention":"회원자격 유지기간 및 관계법령 보존기간(전자상거래법 5년 등)",
+  "third_party":["결제대행사","세무신고 대행"]
+} $pj$::jsonb,
+$rp$ {
+  "penalty_pct":10,
+  "card_fee_pct":5,
+  "deductions":["1회 정상가 × 기제공 레슨(유·무료 포함)","사은품 및 서비스 가액"]
+} $rp$::jsonb,
+'서초점')
+on conflict (contract_type, version) do update set
+  title              = excluded.title,
+  body_html          = excluded.body_html,
+  agreements_json    = excluded.agreements_json,
+  privacy_json       = excluded.privacy_json,
+  refund_policy_json = excluded.refund_policy_json,
+  branch             = excluded.branch;
 
 -- ===========================================================================
 -- 끝

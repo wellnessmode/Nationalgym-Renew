@@ -52,6 +52,7 @@
 - 코드: 로컬 PostgreSQL 시뮬레이션 전부 통과 (절차는 lessons/verify-locally-yourself.md)
 - **약관 현행 버전 2026-06-10**: PT 유효기간 변경 (10회 2개월 / 20회 3개월 / 30회 4개월 — 직원 피드백). 이 시드 반영에는 대표의 SQL 재실행 1회 필요. 구버전(2026-05-19)으로 서명된 계약은 template_id·스냅샷으로 보존됨
 - 직원 피드백 반영 (2026-06-10): ① 회원 화면에서 계약번호·해시·IP·인증서 숨김 (관리자 인증 시에만 표시 — view.js `isAdmin = Array.isArray(d.audit_events)`) ② 카톡 문구 "§3"→"제3조" ③ admin 상품 드롭다운 (`config.js PRODUCTS`, '직접 입력' 폴백) ⑤ "약관 전문 (동의 시점 박제)" 제목에서 괄호 제거
+- 지점별 약관 분기 (2026-06-22): `contract_templates.branch` 컬럼 추가. NULL=공통, 값=해당 지점 전용. admin.js `refreshTemplate` 가 `(branch.eq.X or branch.is.null)` + `order branch desc` 로 지점 특화 우선 선택. 서초점 PT 약관 v2026-06-22-seocho 시드 (운영시간 명시, 홀딩 섹션 없음, 짐 이용권 표현)
 - 도입 단계: 직원 파일럿 완료 → 본 도입 진행 중 (docs/도입기획서.md)
 
 ## 보류 항목 (외부 서비스 필요)
