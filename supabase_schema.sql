@@ -847,7 +847,7 @@ on conflict (contract_type, version) do update set
   privacy_json       = excluded.privacy_json,
   refund_policy_json = excluded.refund_policy_json;
 
--- (2) PT 단독 — 용산점(1호점)·서초점(2호점) 공통 (두 지점 약관 동일).
+-- (2) PT 단독 — 용산 1호점·서초 2호점 공통 (두 지점 약관 동일).
 --     매니저 제공 본문: 운영시간 명시, 유효기간 첫 레슨일 기준 1년(표/홀딩 없음),
 --     짐 이용권 조항, 환불 공제 = 1회 정상가 × 기제공 레슨(유·무료 포함).
 --     ※ 운영시간이 지점마다 다르면 branch 컬럼으로 분기 (per-branch-templates.md)

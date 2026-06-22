@@ -20,14 +20,14 @@ window.NG_CONTRACT_CONFIG = {
   //   - 각 지점이 별도 사업자등록증을 가진 경우 지점별로 작성
   //   - 단일 사업자인 경우 모든 지점에 동일 값 입력
   BUSINESS_BY_BRANCH: {
-    '용산점': {
+    '용산 1호점': {
       name: '내셔널짐 PT 용산점',
       owner: '대표자명',
       registration_no: '000-00-00000',
       address: '서울특별시 ...',
       phone: '010-0000-0000'
     },
-    '서초점': {
+    '서초 2호점': {
       name: '내셔널짐 PT 서초점',
       owner: '대표자명',
       registration_no: '000-00-00000',
@@ -37,7 +37,7 @@ window.NG_CONTRACT_CONFIG = {
   },
 
   // 지점 목록 (관리자 발송 화면에서 선택). BUSINESS_BY_BRANCH 의 키와 일치해야 함.
-  BRANCHES: ['용산점', '서초점'],
+  BRANCHES: ['용산 1호점', '서초 2호점'],
 
   // 관리자 발송 화면 상품 드롭다운 (선택). 비우면 '직접 입력' 만 표시됨.
   // qty 는 상품 선택 시 자동으로 채워지는 횟수/기간 (이후 수정 가능)
