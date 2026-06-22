@@ -11,6 +11,23 @@ function bizForBranch(branch) {
   return map[branch] || cfg.BUSINESS || {};
 }
 
+// 지점별 발송 가능 약관 종류 (config.js). 미정의 지점은 안전하게 전체 허용.
+function allowedTypesForBranch(branch) {
+  const map = cfg.CONTRACT_TYPES_BY_BRANCH || {};
+  return (map[branch] && map[branch].length) ? map[branch] : ['pt', 'golf', 'combo'];
+}
+
+// 선택된 지점에 맞춰 '약관 종류' 드롭다운을 다시 구성 (기존 선택이 유효하면 유지, 아니면 첫 항목)
+function refreshTypeOptions() {
+  const sel = $('t-type');
+  const prev = sel.value;
+  const types = allowedTypesForBranch($('branch').value);
+  const labels = cfg.CONTRACT_TYPE_LABELS || { pt: 'PT 단독', golf: '골프 단독', combo: 'PT + 골프 통합' };
+  sel.innerHTML = types.map(t =>
+    '<option value="' + t + '">' + escapeHTML(labels[t] || t) + '</option>').join('');
+  sel.value = types.indexOf(prev) >= 0 ? prev : types[0];
+}
+
 function showLogin() { $('login').style.display='block'; $('app').style.display='none'; }
 function showApp() {
   $('login').style.display='none'; $('app').style.display='block';
@@ -49,6 +66,7 @@ function escapeHTML(s) {
 async function init() {
   const branches = (cfg.BRANCHES && cfg.BRANCHES.length) ? cfg.BRANCHES : ['본점'];
   $('branch').innerHTML = branches.map(b => '<option>' + escapeHTML(b) + '</option>').join('');
+  refreshTypeOptions();   // 기본 선택 지점에 맞는 약관 종류로 초기화
 
   const { data } = await sb.auth.getSession();
   session = data.session;
@@ -66,7 +84,7 @@ $('btn-login').onclick = async () => {
 };
 $('btn-logout').onclick = async () => { await sb.auth.signOut(); session = null; showLogin(); };
 $('t-type').onchange = refreshTemplate;
-$('branch').onchange = refreshTemplate;
+$('branch').onchange = async () => { refreshTypeOptions(); await refreshTemplate(); };
 
 // --- items ---
 // 상품은 config.js 의 PRODUCTS 드롭다운에서 선택 (직접 입력도 가능)

@@ -33,6 +33,17 @@ window.NG_CONTRACT_CONFIG = {
 
   BRANCHES: ['용산점', '서초점', '골프스튜디오'],
 
+  // 약관 종류 라벨 (contract_type → 표시명)
+  CONTRACT_TYPE_LABELS: { pt: 'PT 단독', golf: '골프 단독', combo: 'PT + 골프 통합' },
+
+  // 지점별 발송 가능한 약관 종류. 용산·서초 = PT 단독만, 3호점(골프스튜디오) = PT·골프·통합 전부.
+  // admin.js 가 지점 선택 시 '약관 종류' 드롭다운을 이 목록으로 제한 (배열 첫 항목이 기본 선택).
+  CONTRACT_TYPES_BY_BRANCH: {
+    '용산점': ['pt'],
+    '서초점': ['pt'],
+    '골프스튜디오': ['pt', 'golf', 'combo']
+  },
+
   // 관리자 발송 화면의 상품 드롭다운 목록 (qty 는 선택 시 자동 입력, 수정 가능)
   // 목록에 없는 상품은 드롭다운의 '직접 입력' 으로 추가
   PRODUCTS: [
