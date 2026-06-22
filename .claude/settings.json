@@ -4,7 +4,11 @@
       "Write(**/*.md)",
       "Edit(**/*.md)",
       "Write(.claude/**/*.md)",
-      "Edit(.claude/**/*.md)"
+      "Edit(.claude/**/*.md)",
+      "Write(**/*.json)",
+      "Edit(**/*.json)",
+      "Write(.claude/**/*.json)",
+      "Edit(.claude/**/*.json)"
     ]
   }
 }
