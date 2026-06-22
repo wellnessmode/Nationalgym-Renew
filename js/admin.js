@@ -95,7 +95,11 @@ $('btn-login').onclick = async () => {
   if (error) { $('login-err').textContent = error.message; return; }
   session = data.session; populateBranches(); showApp(); await refreshTemplate();
 };
-$('btn-logout').onclick = async () => { await sb.auth.signOut(); session = null; showLogin(); };
+$('btn-logout').onclick = async () => {
+  // 실수 로그아웃 방지 — 의도적으로만 (다시 로그인하려면 아이디·비번 필요)
+  if (!confirm('로그아웃 하시겠습니까?\n다시 로그인하려면 아이디·비밀번호가 필요합니다.')) return;
+  await sb.auth.signOut(); session = null; showLogin();
+};
 $('t-type').onchange = refreshTemplate;
 $('branch').onchange = async () => { refreshTypeOptions(); await refreshTemplate(); };
 

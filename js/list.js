@@ -22,8 +22,10 @@ function allowedBranches() {
 async function init() {
   const { data } = await sb.auth.getSession();
   session = data.session;
-  if (!session) { $('login').style.display='block'; $('app').style.display='none'; return; }
+  if (!session) { $('login').style.display='block'; $('app').style.display='none'; $('btn-logout').style.display='none'; return; }
   $('login').style.display='none'; $('app').style.display='block';
+  $('who').textContent = session.user?.email || '';
+  $('btn-logout').style.display = '';
 
   // 지점 필터에는 내 지점만 노출 (RLS 가 최종 차단하므로 UI 는 혼란 방지용 거울)
   const mine = allowedBranches();
@@ -38,6 +40,14 @@ $('btn-login').onclick = async () => {
   const { data, error } = await sb.auth.signInWithPassword({ email, password: pw });
   if (error) { $('login-err').textContent = error.message; return; }
   session = data.session; init();
+};
+$('btn-logout').onclick = async () => {
+  // 실수 로그아웃 방지 — 의도적으로만 (다시 로그인하려면 아이디·비번 필요)
+  if (!confirm('로그아웃 하시겠습니까?\n다시 로그인하려면 아이디·비밀번호가 필요합니다.')) return;
+  await sb.auth.signOut();
+  session = null;
+  $('app').style.display='none'; $('btn-logout').style.display='none';
+  $('login').style.display='block';
 };
 
 function escapeHTML(s) {

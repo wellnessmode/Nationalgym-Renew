@@ -17,5 +17,13 @@
   if (typeof supabase === 'undefined') {
     fail('Supabase JS SDK 가 로드되지 않았습니다.');
   }
-  window.sb = supabase.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_ANON_KEY);
+  // 세션 지속: 한 번 로그인하면 로그아웃 누르기 전까지 자동 로그인 유지
+  //  - persistSession: 세션을 localStorage 에 저장 → 새로고침·브라우저 재시작·재방문 후에도 유지
+  //  - autoRefreshToken: 액세스 토큰 만료 전 자동 갱신 → 끊기지 않음
+  window.sb = supabase.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_ANON_KEY, {
+    auth: {
+      persistSession: true,
+      autoRefreshToken: true
+    }
+  });
 })();
