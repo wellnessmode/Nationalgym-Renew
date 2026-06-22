@@ -1090,21 +1090,21 @@ update public.contracts set branch = '서초 2호점'      where branch = '서�
 update public.contracts set branch = '피티앤골프 3호점' where branch = '골프스튜디오';
 
 -- ===========================================================================
--- 직원 지점 권한 (대표가 실제 이메일로 1회 실행 — 아래는 예시이므로 주석 처리)
+-- 직원 지점 권한 — 계정 생성(대시보드) 후 이 블록을 SQL Editor 에서 1회 실행.
 --   app_metadata 는 service_role·SQL 로만 수정 가능. 변경 후 해당 직원 "재로그인" 필요
 --   (JWT 는 로그인 시점에 발급되므로 기존 세션엔 즉시 반영 안 됨).
---   · 대표/본사(전 지점):  {"role":"admin"}
---   · 지점 직원:           {"branches":["<지점키>"]}   (지점키 = config.js BRANCHES)
+--   계정 이메일(로그인 ID): ceo / yongsan / seocho / ptgolf @nationalgym.kr
+--   ※ 비밀번호는 보안상 이 파일(git)에 두지 않음 — 대표가 대시보드에서 설정·관리.
 --   권한 회수/변경도 같은 방식으로 raw_app_meta_data 를 덮어쓰면 됨.
 -- ---------------------------------------------------------------------------
--- update auth.users set raw_app_meta_data = coalesce(raw_app_meta_data,'{}'::jsonb) || '{"role":"admin"}'::jsonb
---   where email = 'ceo@nationalgym.kr';
--- update auth.users set raw_app_meta_data = coalesce(raw_app_meta_data,'{}'::jsonb) || '{"branches":["용산 1호점"]}'::jsonb
---   where email = '<용산 직원 이메일>';
--- update auth.users set raw_app_meta_data = coalesce(raw_app_meta_data,'{}'::jsonb) || '{"branches":["서초 2호점"]}'::jsonb
---   where email = '<서초 직원 이메일>';
--- update auth.users set raw_app_meta_data = coalesce(raw_app_meta_data,'{}'::jsonb) || '{"branches":["피티앤골프 3호점"]}'::jsonb
---   where email = '<피티앤골프 직원 이메일>';
+update auth.users set raw_app_meta_data = coalesce(raw_app_meta_data,'{}'::jsonb) || '{"role":"admin"}'::jsonb
+  where email = 'ceo@nationalgym.kr';
+update auth.users set raw_app_meta_data = coalesce(raw_app_meta_data,'{}'::jsonb) || '{"branches":["용산 1호점"]}'::jsonb
+  where email = 'yongsan@nationalgym.kr';
+update auth.users set raw_app_meta_data = coalesce(raw_app_meta_data,'{}'::jsonb) || '{"branches":["서초 2호점"]}'::jsonb
+  where email = 'seocho@nationalgym.kr';
+update auth.users set raw_app_meta_data = coalesce(raw_app_meta_data,'{}'::jsonb) || '{"branches":["피티앤골프 3호점"]}'::jsonb
+  where email = 'ptgolf@nationalgym.kr';
 -- 확인: select email, raw_app_meta_data from auth.users order by created_at;
 
 -- ===========================================================================
