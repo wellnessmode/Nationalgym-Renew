@@ -116,7 +116,22 @@ $('btn-logout').onclick = async () => {
 $('t-type').onchange = refreshTemplate;
 $('branch').onchange = async () => { refreshTypeOptions(); renderItems(); await refreshTemplate(); };
 
-// 이용 시작일 입력 시 레슨 유효기간(1년) 기준으로 이용 종료일 자동 계산 (수정 가능)
+function fmtDate(d) {
+  const pad = n => String(n).padStart(2, '0');
+  return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+}
+
+// 이용 시작일 입력 시 레슨 유효기간(1년) 기준 이용 종료일 + 짐 이용권 종료일 자동 계산.
+// 직원이 종료일을 직접 수정한 경우(dataset.touched)엔 덮어쓰지 않음.
+function recalcGymEnd() {
+  const s = $('period-start').value;
+  const days = Number($('gym-days').value || 0);
+  if (!s || !days) return;
+  const d = new Date(s + 'T00:00:00');
+  if (isNaN(d.getTime())) return;
+  d.setDate(d.getDate() + days - 1);   // 시작일 포함 N일
+  if (!$('gym-end').dataset.touched) $('gym-end').value = fmtDate(d);
+}
 $('period-start').oninput = () => {
   const s = $('period-start').value;
   if (!s) return;
@@ -124,9 +139,12 @@ $('period-start').oninput = () => {
   if (isNaN(d.getTime())) return;
   d.setFullYear(d.getFullYear() + 1);
   d.setDate(d.getDate() - 1);   // 시작일 포함 정확히 1년 (예: 6/24 → 이듬해 6/23)
-  const pad = n => String(n).padStart(2, '0');
-  $('period-end').value = d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+  if (!$('period-end').dataset.touched) $('period-end').value = fmtDate(d);
+  recalcGymEnd();
 };
+$('period-end').oninput = () => { $('period-end').dataset.touched = '1'; };
+$('gym-days').oninput  = () => { $('gym-days').dataset.touched = '1'; recalcGymEnd(); };
+$('gym-end').oninput   = () => { $('gym-end').dataset.touched = '1'; };
 
 // --- items ---
 // 상품은 config.js 의 PRODUCTS 드롭다운에서 선택 (직접 입력도 가능)
@@ -170,6 +188,11 @@ function renderItems() {
         nameLabel.style.display = 'none';
         items[i].name = p.name;
         if (p.qty) { items[i].qty = p.qty; qtyInput.value = p.qty; }
+        // PT 상품의 무료 짐 이용권 일수 자동 채움 (직원 미수정 시에만)
+        if (p.gym_days && !$('gym-days').dataset.touched) {
+          $('gym-days').value = p.gym_days;
+          recalcGymEnd();
+        }
       }
     };
 
@@ -192,8 +215,8 @@ $('total').oninput = () => { $('total').dataset.touched = '1'; };
 $('btn-add-item').onclick = () => { items.push({ name:'', qty:'', price:0 }); renderItems(); };
 
 $('btn-reset').onclick = () => {
-  ['m-name','m-phone','m-birth','m-email','m-address','total','period-start','period-end','locker-no','locker-months','notes'].forEach(id => $(id).value='');
-  delete $('total').dataset.touched;
+  ['m-name','m-phone','m-birth','m-email','m-address','total','period-start','period-end','gym-days','gym-end','locker-no','locker-months','notes'].forEach(id => $(id).value='');
+  ['total','period-end','gym-days','gym-end'].forEach(id => { delete $(id).dataset.touched; });
   items.length = 0; renderItems();
   $('result').style.display='none';
   $('err').textContent='';
@@ -258,6 +281,8 @@ $('btn-create').onclick = async () => {
     payment_method: $('pay').value,
     contract_period_start: $('period-start').value || null,
     contract_period_end: $('period-end').value || null,
+    gym_days: Number($('gym-days').value) || null,
+    gym_period_end: $('gym-end').value || null,
     locker_no: $('locker-no').value || null,
     locker_months: lockerMonths,
     notes: $('notes').value || null,
@@ -290,7 +315,10 @@ $('btn-create').onclick = async () => {
     '재계약 전자계약서 안내드립니다. 아래 링크에서\n' +
     '본인확인 → 약관 확인 → 동의 체크 3단계로 간편하게 진행하실 수 있습니다.\n\n' +
     '■ 계약 내용\n' + itemSummary + '\n' +
-    '총 결제금액 ' + total.toLocaleString() + '원\n\n' +
+    '총 결제금액 ' + total.toLocaleString() + '원\n' +
+    ($('gym-days').value && $('gym-end').value
+      ? '무료 짐 이용권 ' + $('gym-days').value + '일 (~ ' + $('gym-end').value + ')\n'
+      : '') + '\n' +
     '■ 본인확인 정보 (필수)\n' +
     '· 이름: ' + name + '\n' +
     '· 생년월일: ' + birth + '\n' +

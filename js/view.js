@@ -112,6 +112,7 @@ async function render(d) {
       + '</td></tr>'
     + '<tr><th>지점</th><td>' + escapeHTML(c.branch || '-') + '</td></tr>'
     + '<tr><th>이용 기간</th><td>' + escapeHTML(c.contract_period_start || '-') + ' ~ ' + escapeHTML(c.contract_period_end || '-') + '</td></tr>'
+    + (c.gym_days ? '<tr><th>무료 짐 이용권</th><td>' + c.gym_days + '일' + (c.gym_period_end ? ' (~ ' + escapeHTML(c.gym_period_end) + ')' : '') + '</td></tr>' : '')
     + '<tr><th>결제수단</th><td>' + escapeHTML(PAY_LABEL[c.payment_method] || c.payment_method || '-') + '</td></tr>'
     + (c.locker_no ? '<tr><th>사물함</th><td>' + escapeHTML(c.locker_no) + (c.locker_months ? ' / ' + c.locker_months + '개월' : '') + '</td></tr>' : '')
     + (c.notes ? '<tr><th>비고</th><td>' + escapeHTML(c.notes) + '</td></tr>' : '')

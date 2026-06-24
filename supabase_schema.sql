@@ -77,6 +77,15 @@ alter table public.contract_templates
 create index if not exists templates_type_branch_idx
   on public.contract_templates(contract_type, branch, is_active);
 
+-- 무료 짐 이용권 (2026-06-24): PT 횟수별 자동 세팅.
+--   gym_days     = 발송 시점 박제(추적·표시용), PT 상품 선택 시 config.js PRODUCTS.gym_days 에서 자동 채워짐
+--   gym_period_end = 이용 시작일 + gym_days (시작일은 contract_period_start 와 동일하다고 가정)
+--   immutable 트리거 대상 아님 → 서명완료 후에도 운영상 보정 가능
+alter table public.contracts
+  add column if not exists gym_days int;
+alter table public.contracts
+  add column if not exists gym_period_end date;
+
 -- ===========================================================================
 -- 2) 계약 인스턴스
 -- ===========================================================================

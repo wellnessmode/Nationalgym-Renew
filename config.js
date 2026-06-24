@@ -47,12 +47,14 @@ window.NG_CONTRACT_CONFIG = {
   // 관리자 발송 화면의 상품 드롭다운 목록 (qty 는 선택 시 자동 입력, 수정 가능)
   // cat: 'pt'=PT 상품, 'golf'=골프 상품, 'etc'=공통/기타. admin.js 가 지점별로 필터:
   //   PT 전용 지점(용산·서초) → pt 만, 피티앤골프 3호점 → pt+golf+etc.
+  // gym_days: PT 가입 시 따라오는 무료 짐 이용권 일수 (이용 시작일 기준).
+  //   PT 50회 = 패밀리세션(2인 쉐어 = 25회 기준)이라 일수가 30회보다 짧음.
   // 목록에 없는 상품은 드롭다운의 '직접 입력'(기타) 으로 추가
   PRODUCTS: [
-    { name: 'PT 10회',            qty: '10회 / 1년', cat: 'pt' },
-    { name: 'PT 20회',            qty: '20회 / 1년', cat: 'pt' },
-    { name: 'PT 30회',            qty: '30회 / 1년', cat: 'pt' },
-    { name: 'PT 50회',            qty: '50회 / 1년', cat: 'pt' },
+    { name: 'PT 10회',            qty: '10회 / 1년', cat: 'pt', gym_days:  40 },
+    { name: 'PT 20회',            qty: '20회 / 1년', cat: 'pt', gym_days:  80 },
+    { name: 'PT 30회',            qty: '30회 / 1년', cat: 'pt', gym_days: 120 },
+    { name: 'PT 50회 (패밀리)',   qty: '50회 / 1년 (2인 쉐어, 25회 기준)', cat: 'pt', gym_days: 100 },
     { name: '골프 25분 레슨 8회',  qty: '8회 / 2개월',  cat: 'golf' },
     { name: '골프 25분 레슨 20회', qty: '20회 / 4개월', cat: 'golf' },
     { name: '골프 25분 레슨 30회', qty: '30회 / 4개월', cat: 'golf' },

@@ -81,8 +81,13 @@
     </div>
     <div class="row">
       <label>이용 시작일 <input id="period-start" type="date"></label>
-      <label>이용 종료일 <input id="period-end" type="date"></label>
+      <label>이용 종료일 (시작일+1년 자동) <input id="period-end" type="date"></label>
     </div>
+    <div class="row">
+      <label>무료 짐 이용권 일수 (PT 상품 선택 시 자동) <input id="gym-days" type="number" min="0" step="1" placeholder="예: 40"></label>
+      <label>짐 이용권 종료일 (시작일+일수 자동) <input id="gym-end" type="date"></label>
+    </div>
+    <p class="muted small">PT 10회=40일 · 20회=80일 · 30회=120일 · 50회(패밀리)=100일. 자동 채워지며 직접 수정도 가능.</p>
     <div class="row">
       <label>사물함 번호 (선택) <input id="locker-no" type="text"></label>
       <label>사물함 개월 (선택) <input id="locker-months" type="number" min="0" step="1"></label>

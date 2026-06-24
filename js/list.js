@@ -282,6 +282,7 @@ function buildBackupHtml(payload) {
     + 'h+="<tr><th>지점</th><td>"+esc(c.branch||"-")+"</td></tr>";\n'
     + 'h+="<tr><th>금액/결제</th><td>"+won(c.total_amount)+" / "+esc(c.payment_method||"-")+"</td></tr>";\n'
     + 'h+="<tr><th>이용 기간</th><td>"+esc(c.contract_period_start||"-")+" ~ "+esc(c.contract_period_end||"-")+"</td></tr>";\n'
+    + 'if(c.gym_days)h+="<tr><th>무료 짐 이용권</th><td>"+c.gym_days+"일"+(c.gym_period_end?" (~ "+esc(c.gym_period_end)+")":"")+"</td></tr>";\n'
     + 'h+="<tr><th>상태</th><td>"+esc(STATUS[c.status]||c.status)+"</td></tr>";\n'
     + 'h+="<tr><th>생성/동의</th><td>"+dt(c.created_at)+" / "+dt(c.signed_at)+"</td></tr>";\n'
     + 'h+="<tr><th>계약번호</th><td class=mono>"+esc(c.id)+"</td></tr>";\n'
