@@ -171,14 +171,34 @@ async function init() {
 // ---- Welcome → Identity ----
 $('btn-to-identity').onclick = () => showStep('identity');
 
+// 생년월일 텍스트 입력 → 'YYYY-MM-DD' 정규화 (8자리 숫자 또는 구분자 형식 허용).
+// 본인확인 RPC 는 date 타입 비교라 발송 시 저장된 값과 같은 달력일이면 형식 무관하게 일치.
+function normalizeBirth(raw) {
+  const s = String(raw || '').trim();
+  const digits = s.replace(/[^0-9]/g, '');
+  let y, m, d;
+  if (/^[0-9]{8}$/.test(digits)) {
+    y = digits.slice(0, 4); m = digits.slice(4, 6); d = digits.slice(6, 8);
+  } else {
+    const mt = s.match(/^([0-9]{4})[.\-/]([0-9]{1,2})[.\-/]([0-9]{1,2})$/);
+    if (!mt) return null;
+    y = mt[1]; m = mt[2].padStart(2, '0'); d = mt[3].padStart(2, '0');
+  }
+  const yi = +y, mi = +m, di = +d;
+  if (yi < 1900 || yi > 2026 || mi < 1 || mi > 12 || di < 1 || di > 31) return null;
+  const dt = new Date(yi, mi - 1, di);   // 실제 달력 유효성 (예: 2/30 차단)
+  if (dt.getFullYear() !== yi || dt.getMonth() !== mi - 1 || dt.getDate() !== di) return null;
+  return y + '-' + m + '-' + d;
+}
+
 // ---- Identity verification ----
 $('btn-verify').onclick = async () => {
   $('id-err').textContent = '';
   const name = $('id-name').value.trim();
-  const birth = $('id-birth').value;
+  const birth = normalizeBirth($('id-birth').value);
   const p4 = $('id-phone4').value.trim().replace(/[^0-9]/g, '');
   if (!name) { $('id-err').textContent = '이름을 입력해 주세요.'; return; }
-  if (!birth) { $('id-err').textContent = '생년월일을 선택해 주세요.'; return; }
+  if (!birth) { $('id-err').textContent = '생년월일을 숫자 8자리로 정확히 입력해 주세요. (예: 19900515)'; return; }
   if (!/^[0-9]{4}$/.test(p4)) { $('id-err').textContent = '휴대폰 끝 4자리를 정확히 입력해 주세요.'; return; }
 
   const btn = $('btn-verify');

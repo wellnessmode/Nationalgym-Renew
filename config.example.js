@@ -41,10 +41,12 @@ window.NG_CONTRACT_CONFIG = {
 
   // 관리자 발송 화면 상품 드롭다운 (선택). 비우면 '직접 입력' 만 표시됨.
   // qty 는 상품 선택 시 자동으로 채워지는 횟수/기간 (이후 수정 가능)
+  // cat: 'pt'/'golf'/'etc' — admin.js 가 지점별로 필터 (PT 전용 지점은 pt 만 노출)
   PRODUCTS: [
-    { name: 'PT 10회', qty: '10회 / 2개월' },
-    { name: 'PT 20회', qty: '20회 / 3개월' },
-    { name: 'PT 30회', qty: '30회 / 4개월' }
+    { name: 'PT 10회', qty: '10회 / 1년', cat: 'pt' },
+    { name: 'PT 20회', qty: '20회 / 1년', cat: 'pt' },
+    { name: 'PT 30회', qty: '30회 / 1년', cat: 'pt' },
+    { name: 'PT 50회', qty: '50회 / 1년', cat: 'pt' }
   ],
 
   // 서명 페이지 절대 URL (배포 후 채움)

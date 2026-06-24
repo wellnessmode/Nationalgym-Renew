@@ -79,7 +79,8 @@
       <input id="id-name" type="text" autocomplete="name" inputmode="text" placeholder="예: 홍길동">
     </label>
     <label>생년월일
-      <input id="id-birth" type="date" autocomplete="bday" max="2026-12-31">
+      <input id="id-birth" type="text" inputmode="numeric" autocomplete="bday" maxlength="10" placeholder="예: 19900515 (8자리)">
+      <span class="muted small">숫자 8자리로 입력해 주세요. 예) 1990년 5월 15일 → 19900515</span>
     </label>
     <label>휴대폰 끝 4자리
       <input id="id-phone4" type="tel" inputmode="numeric" maxlength="4" pattern="[0-9]{4}" placeholder="0000">

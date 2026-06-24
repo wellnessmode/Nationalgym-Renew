@@ -17,6 +17,19 @@ function allowedTypesForBranch(branch) {
   return (map[branch] && map[branch].length) ? map[branch] : ['pt', 'golf', 'combo'];
 }
 
+// 지점별 상품 드롭다운 목록. PT 전용 지점(용산·서초) → PT 상품만, 피티앤골프 3호점 → 전부.
+function productsForBranch(branch) {
+  const types = allowedTypesForBranch(branch);
+  const ptOK = types.indexOf('pt') >= 0 || types.indexOf('combo') >= 0;
+  const golfOK = types.indexOf('golf') >= 0 || types.indexOf('combo') >= 0;
+  return (cfg.PRODUCTS || []).filter(p =>
+    p.cat === 'pt'   ? ptOK :
+    p.cat === 'golf' ? golfOK :
+    p.cat === 'etc'  ? golfOK :   // 사물함 등 기타: 골프 취급 지점(3호점)에서만. PT 전용 지점은 전용 사물함칸 사용
+    true
+  );
+}
+
 // 선택된 지점에 맞춰 '약관 종류' 드롭다운을 다시 구성 (기존 선택이 유효하면 유지, 아니면 첫 항목)
 function refreshTypeOptions() {
   const sel = $('t-type');
@@ -101,7 +114,19 @@ $('btn-logout').onclick = async () => {
   await sb.auth.signOut(); session = null; showLogin();
 };
 $('t-type').onchange = refreshTemplate;
-$('branch').onchange = async () => { refreshTypeOptions(); await refreshTemplate(); };
+$('branch').onchange = async () => { refreshTypeOptions(); renderItems(); await refreshTemplate(); };
+
+// 이용 시작일 입력 시 레슨 유효기간(1년) 기준으로 이용 종료일 자동 계산 (수정 가능)
+$('period-start').oninput = () => {
+  const s = $('period-start').value;
+  if (!s) return;
+  const d = new Date(s + 'T00:00:00');
+  if (isNaN(d.getTime())) return;
+  d.setFullYear(d.getFullYear() + 1);
+  d.setDate(d.getDate() - 1);   // 시작일 포함 정확히 1년 (예: 6/24 → 이듬해 6/23)
+  const pad = n => String(n).padStart(2, '0');
+  $('period-end').value = d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+};
 
 // --- items ---
 // 상품은 config.js 의 PRODUCTS 드롭다운에서 선택 (직접 입력도 가능)
@@ -109,7 +134,7 @@ const items = [];
 function renderItems() {
   const root = $('items');
   root.innerHTML = '';
-  const products = cfg.PRODUCTS || [];
+  const products = productsForBranch($('branch').value);
   items.forEach((it, i) => {
     const div = document.createElement('div');
     div.className = 'item-row';
