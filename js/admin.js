@@ -6,6 +6,26 @@ const cfg = window.NG_CONTRACT_CONFIG;
 let session = null;
 let activeTemplate = null;
 
+// 생년월일 정규화 (sign.js 와 동일 규칙): "19890803" / "1989-08-03" / "1989.08.03" 등을
+// "YYYY-MM-DD" 로 변환. 잘못된 날짜(예: 2/30)는 null.
+function normalizeBirth(raw) {
+  const s = String(raw || '').trim();
+  const digits = s.replace(/[^0-9]/g, '');
+  let y, m, d;
+  if (/^[0-9]{8}$/.test(digits)) {
+    y = digits.slice(0, 4); m = digits.slice(4, 6); d = digits.slice(6, 8);
+  } else {
+    const mt = s.match(/^([0-9]{4})[.\-/]([0-9]{1,2})[.\-/]([0-9]{1,2})$/);
+    if (!mt) return null;
+    y = mt[1]; m = mt[2].padStart(2, '0'); d = mt[3].padStart(2, '0');
+  }
+  const yi = +y, mi = +m, di = +d;
+  if (yi < 1900 || yi > 2026 || mi < 1 || mi > 12 || di < 1 || di > 31) return null;
+  const dt = new Date(yi, mi - 1, di);
+  if (dt.getFullYear() !== yi || dt.getMonth() !== mi - 1 || dt.getDate() !== di) return null;
+  return y + '-' + m + '-' + d;
+}
+
 function bizForBranch(branch) {
   const map = cfg.BUSINESS_BY_BRANCH || {};
   return map[branch] || cfg.BUSINESS || {};
@@ -240,10 +260,13 @@ $('btn-create').onclick = async () => {
 
   const name = $('m-name').value.trim();
   const phone = $('m-phone').value.trim().replace(/[^0-9]/g, '');
-  const birth = $('m-birth').value;
+  const birthRaw = $('m-birth').value;
+  const birth = normalizeBirth(birthRaw);
   if (!name || !phone) { $('err').textContent = '이름과 휴대폰은 필수입니다.'; return; }
   if (!/^01[016789][0-9]{7,8}$/.test(phone)) { $('err').textContent='휴대폰 번호 형식이 올바르지 않습니다.'; return; }
-  if (!birth) { $('err').textContent = '생년월일은 본인확인용으로 필수입니다.'; return; }
+  if (!birthRaw) { $('err').textContent = '생년월일은 본인확인용으로 필수입니다.'; return; }
+  if (!birth) { $('err').textContent = '생년월일 형식이 올바르지 않습니다. (예: 19890803 또는 1989-08-03)'; return; }
+  $('m-birth').value = birth;   // 정규화된 값으로 화면도 갱신
   if (items.length === 0) { $('err').textContent = '계약 항목을 1개 이상 추가하세요.'; return; }
   for (const it of items) {
     if (!it.name || !it.qty || !it.price) { $('err').textContent='항목명·횟수·금액을 모두 입력하세요.'; return; }
