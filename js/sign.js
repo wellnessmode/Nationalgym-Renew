@@ -314,23 +314,10 @@ function renderContractSummary() {
     + '</tbody></table>';
 }
 
-// ---- 환불정책 / 개인정보 박스 ----
+// ---- 개인정보 박스 ----
+// (환불/양도 요약 단독 박스는 2026-06-27 제거: 약관 전문 제3조 + 동의 체크박스에
+//  이미 동일 내용이 있어 3중 중복이라 회원 반감 유발 — 직원 피드백. 고지는 약관 전문이 유지)
 function renderPolicies() {
-  // 환불 요약 (v1 원본 공식: 위약금 10% / 카드수수료 5% / 이용 회차 정상가 / 사은품)
-  const rp = (template.refund_policy_json && Object.keys(template.refund_policy_json).length) ? template.refund_policy_json : null;
-  const rpBox = $('refund-policy-box');
-  if (rp) {
-    const penalty = rp.penalty_pct != null ? rp.penalty_pct : (rp.max_penalty_pct != null ? rp.max_penalty_pct : 10);
-    const cardFee = rp.card_fee_pct != null ? rp.card_fee_pct : 5;
-    const deductions = (rp.deductions || []).map(d => '<li>' + escapeHTML(d) + '</li>').join('');
-    rpBox.innerHTML =
-      '<p><b>환불 공제금액</b>: 결제금액 − 위약금 ' + penalty + '% − 카드 수수료 ' + cardFee + '% − 사은품 및 서비스 공제</p>'
-      + (deductions ? '<ul class="deduction-list">' + deductions + '</ul>' : '');
-  } else {
-    rpBox.innerHTML = '<p class="muted small">약관 제3조(환불·양도) 조항을 참조해 주세요.</p>';
-  }
-
-  // 개인정보
   const pj = (template.privacy_json && Object.keys(template.privacy_json).length) ? template.privacy_json : null;
   const pBox = $('privacy-policy-box');
   if (pj) {

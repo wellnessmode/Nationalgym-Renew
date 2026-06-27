@@ -261,8 +261,22 @@ async function render(d) {
 
       const filename = 'nationalgym-contract-' + (c.id || '').slice(0, 8) + '-'
         + (c.member_name || '').replace(/[^\p{L}\p{N}]/gu, '') + '.pdf';
-      pdf.save(filename);
-      logEvent('pdf_downloaded', { method: 'pdf', filename });
+
+      // 저장 분기: 아이폰/PC 는 검증된 기본 저장(pdf.save) 유지.
+      // 안드로이드(갤럭시 등)는 카톡 인앱브라우저 등에서 Blob <a download> 가
+      // 조용히 무시되는 사례가 있어, PDF 를 새 탭으로 띄워 사용자가 직접 저장·공유하게 함.
+      let method = 'pdf';
+      if (/Android/i.test(navigator.userAgent || '')) {
+        const blob = pdf.output('blob');
+        const url = URL.createObjectURL(blob);
+        const win = window.open(url, '_blank');
+        if (!win) location.href = url;                    // 팝업 차단 시 같은 탭에서 열기
+        setTimeout(() => URL.revokeObjectURL(url), 60000);
+        method = 'pdf_newtab';
+      } else {
+        pdf.save(filename);
+      }
+      logEvent('pdf_downloaded', { method: method, filename });
     } catch (e) {
       alert('PDF 생성 실패: ' + e.message);
     } finally {
