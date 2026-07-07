@@ -42,6 +42,8 @@ async function load() {
     $('loading').innerHTML = '<p class="error">' + (
       data.error === 'unauthorized'
         ? '권한이 없습니다. 회원은 카카오톡으로 받으신 링크로 다시 접속해 주세요.'
+        : data.error === 'forbidden'
+        ? '다른 지점의 계약입니다. 본인 지점 계약만 열람할 수 있습니다.'
         : ('오류: ' + data.error)
     ) + '</p>';
     return;

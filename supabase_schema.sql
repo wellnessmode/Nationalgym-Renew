@@ -292,6 +292,8 @@ drop policy if exists "auth all audit"           on public.contract_audit_log;
 drop policy if exists "branch scoped contracts"  on public.contracts;
 drop policy if exists "branch scoped signatures" on public.contract_signatures;
 drop policy if exists "branch scoped audit"      on public.contract_audit_log;
+drop policy if exists "templates read all"       on public.contract_templates;
+drop policy if exists "templates admin write"    on public.contract_templates;
 
 -- 계약: 자기 지점만 (조회·발송 공통). with check 가 타 지점 발송(INSERT)도 차단.
 create policy "branch scoped contracts" on public.contracts
@@ -299,9 +301,16 @@ create policy "branch scoped contracts" on public.contracts
   using (public.can_access_branch(branch))
   with check (public.can_access_branch(branch));
 
--- 약관 템플릿: PII 아님 + 공통(branch IS NULL) fallback 노출 필요 → 인증 직원 모두 열람.
-create policy "auth all templates" on public.contract_templates
-  for all to authenticated using (true) with check (true);
+-- 약관 템플릿: 열람은 전 직원(지점 특화+공통 fallback 선택 위해 필요, PII 아님),
+--   쓰기(INSERT/UPDATE/DELETE)는 대표(admin)만. 시드는 SQL(owner)로 실행되어 RLS 우회.
+--   (기존 for-all using(true) 는 아무 직원이나 타 지점/공통 약관 본문 위·변조 가능했음 →
+--    submit_consent 가 서명시점에 재스냅샷하므로 계약 본문 위변조로 직결. 2026-06-27 봉인)
+create policy "templates read all" on public.contract_templates
+  for select to authenticated using (true);
+create policy "templates admin write" on public.contract_templates
+  for all to authenticated
+  using      (coalesce(auth.jwt() -> 'app_metadata' ->> 'role', '') = 'admin')
+  with check (coalesce(auth.jwt() -> 'app_metadata' ->> 'role', '') = 'admin');
 
 -- 서명/감사: 자체 branch 컬럼 없음 → 부모 계약(contract_id)의 지점으로 스코프.
 create policy "branch scoped signatures" on public.contract_signatures
@@ -732,7 +741,15 @@ begin
     return json_build_object('error', 'not_found');
   end if;
 
-  if not v_authed then
+  if v_authed then
+    -- 인증 직원: security definer 라 RLS 가 우회되므로 지점 검사를 명시적으로 수행.
+    -- 자기 지점 계약만 열람(대표=admin 은 전 지점). 없으면 타 지점 계약 전체+PII+감사기록이
+    -- UUID 만으로 유출됨(2026-06-27 봉인).
+    if not public.can_access_branch(v_contract.branch) then
+      return json_build_object('error', 'forbidden');
+    end if;
+  else
+    -- 회원: 서명 토큰 일치 필요
     if p_token is null or p_token <> v_contract.sign_token then
       return json_build_object('error', 'unauthorized');
     end if;
@@ -787,7 +804,12 @@ begin
   return v_count;
 end;
 $func$;
-grant execute on function public.expire_old_contracts() to authenticated;
+-- 만료 스윕은 전 지점 대상(status 시간만료 일괄 변경)이라 상호작용 직원에게 노출 금지.
+-- cron/스케줄러(service_role·postgres)만 실행. (2026-06-27: 직원 실행 시 타 지점 계약
+-- 상태까지 변경 가능했음. PUBLIC 기본 execute 도 함께 회수)
+revoke execute on function public.expire_old_contracts() from public;
+revoke execute on function public.expire_old_contracts() from authenticated;
+grant  execute on function public.expire_old_contracts() to service_role;
 
 -- ===========================================================================
 -- 관리자용 통계 뷰
@@ -1106,13 +1128,19 @@ update public.contracts set branch = '피티앤골프 3호점' where branch = '�
 --   ※ 비밀번호는 보안상 이 파일(git)에 두지 않음 — 대표가 대시보드에서 설정·관리.
 --   권한 회수/변경도 같은 방식으로 raw_app_meta_data 를 덮어쓰면 됨.
 -- ---------------------------------------------------------------------------
-update auth.users set raw_app_meta_data = coalesce(raw_app_meta_data,'{}'::jsonb) || '{"role":"admin"}'::jsonb
+--   ⚠ 병합(||) 아닌 "stale 키 제거 후 치환": branch 직원에 role:admin 이 잘못 남아있으면
+--     전 지점이 계속 노출됨. `- 'role'` / `- 'branches'` 로 반대 키를 먼저 지우고 덮어씀.
+update auth.users set raw_app_meta_data =
+  coalesce(raw_app_meta_data,'{}'::jsonb) - 'branches' || '{"role":"admin"}'::jsonb
   where email = 'ceo@nationalgym.kr';
-update auth.users set raw_app_meta_data = coalesce(raw_app_meta_data,'{}'::jsonb) || '{"branches":["용산 1호점"]}'::jsonb
+update auth.users set raw_app_meta_data =
+  coalesce(raw_app_meta_data,'{}'::jsonb) - 'role' || '{"branches":["용산 1호점"]}'::jsonb
   where email = 'yongsan@nationalgym.kr';
-update auth.users set raw_app_meta_data = coalesce(raw_app_meta_data,'{}'::jsonb) || '{"branches":["서초 2호점"]}'::jsonb
+update auth.users set raw_app_meta_data =
+  coalesce(raw_app_meta_data,'{}'::jsonb) - 'role' || '{"branches":["서초 2호점"]}'::jsonb
   where email = 'seocho@nationalgym.kr';
-update auth.users set raw_app_meta_data = coalesce(raw_app_meta_data,'{}'::jsonb) || '{"branches":["피티앤골프 3호점"]}'::jsonb
+update auth.users set raw_app_meta_data =
+  coalesce(raw_app_meta_data,'{}'::jsonb) - 'role' || '{"branches":["피티앤골프 3호점"]}'::jsonb
   where email = 'ptgolf@nationalgym.kr';
 -- 확인: select email, raw_app_meta_data from auth.users order by created_at;
 
