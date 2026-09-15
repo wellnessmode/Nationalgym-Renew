@@ -231,21 +231,34 @@ async function render(d) {
       if (auditEl) auditEl.style.display = prevDisplay;
 
       const { jsPDF } = window.jspdf;
-      const pdf = new jsPDF('p', 'mm', 'a4');
+      const pdf = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4', compress: true });
       const pageW = pdf.internal.pageSize.getWidth();
       const pageH = pdf.internal.pageSize.getHeight();
-      const imgW = pageW;
-      const imgH = canvas.height * imgW / canvas.width;
-      const imgData = canvas.toDataURL('image/png');
 
-      let heightLeft = imgH, position = 0;
-      pdf.addImage(imgData, 'PNG', 0, position, imgW, imgH);
-      heightLeft -= pageH;
-      while (heightLeft > 0) {
-        position = heightLeft - imgH;
-        pdf.addPage();
-        pdf.addImage(imgData, 'PNG', 0, position, imgW, imgH);
-        heightLeft -= pageH;
+      // 페이지별로 캔버스를 잘라 JPEG로 각 페이지에 1장씩만 삽입.
+      // (기존: 전체 이미지를 PNG(raw 비트맵)로 페이지 수만큼 통째 재삽입 → 5페이지면 40~53MB.
+      //  개선: 각 페이지 조각만 JPEG 압축 → 동일 내용·페이지수에서 ~33배 감소, 텍스트 가독성 유지.
+      //  로컬 실측: 5p 53.4MB → 1.6MB. 2026-06-27)
+      const JPEG_Q = 0.82;                                   // 법적 문서 가독성 유지 선에서 압축
+      const pxPerPage = Math.floor(canvas.width * pageH / pageW);
+      let offsetY = 0, pageIndex = 0;
+      while (offsetY < canvas.height) {
+        const sliceH = Math.min(pxPerPage, canvas.height - offsetY);
+        const slice = document.createElement('canvas');
+        slice.width = canvas.width;
+        slice.height = sliceH;
+        const sctx = slice.getContext('2d');
+        sctx.fillStyle = '#ffffff';
+        sctx.fillRect(0, 0, slice.width, slice.height);
+        sctx.drawImage(canvas, 0, offsetY, canvas.width, sliceH, 0, 0, canvas.width, sliceH);
+
+        const imgData = slice.toDataURL('image/jpeg', JPEG_Q);
+        const imgHmm = sliceH * pageW / canvas.width;
+        if (pageIndex > 0) pdf.addPage();
+        pdf.addImage(imgData, 'JPEG', 0, 0, pageW, imgHmm);
+
+        offsetY += sliceH;
+        pageIndex++;
       }
 
       // 푸터에 무결성 워터마크 (각 페이지)
