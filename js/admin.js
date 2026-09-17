@@ -234,9 +234,58 @@ function recalcTotal() {
 $('total').oninput = () => { $('total').dataset.touched = '1'; };
 $('btn-add-item').onclick = () => { items.push({ name:'', qty:'', price:0 }); renderItems(); };
 
+// --- 분납(2회) 헬퍼 ---------------------------------------------------------
+// 약관 제5조(분납)가 미납 시 보류·환급 기준을 규정하므로, 비고란에는 "일정"만 정형 블록으로 남긴다.
+// 순수 함수(검증·문구)는 마커 사이에 두어 node 로 그대로 테스트한다 (DOM 의존 없음).
+// --- installment-pure-start ---
+function fmtDot(iso) { return iso ? String(iso).replace(/-/g, '.') : ''; }
+function won(n) { return Number(n || 0).toLocaleString() + '원'; }
+// 오류 메시지 문자열 반환, 정상이면 null. inst=null 이면 분납 아님.
+function validateInstallment(inst, total) {
+  if (!inst) return null;
+  if (!(inst.a1 > 0) || !(inst.a2 > 0)) return '분납 1차·2차 금액을 모두 입력하세요.';
+  if (inst.a1 + inst.a2 !== total) {
+    return '분납 1차+2차 금액(' + (inst.a1 + inst.a2).toLocaleString() + '원)이 총 결제금액('
+      + total.toLocaleString() + '원)과 일치해야 합니다.';
+  }
+  if (!inst.d1 || !inst.d2) return '분납 1차 납입일과 2차 납입 예정일을 입력하세요.';
+  if (inst.d2 <= inst.d1) return '2차 납입 예정일은 1차 납입일 이후여야 합니다.';
+  return null;
+}
+function buildInstallmentNote(inst, total) {
+  return '[분납] 총 결제금액 ' + won(total) + '을 2회 분납 — 1차 ' + won(inst.a1) + '(' + fmtDot(inst.d1) + ' 납입) / 2차 '
+    + won(inst.a2) + '(' + fmtDot(inst.d2) + ' 납입 예정). 분납 관련 사항은 약관 제5조에 따름.';
+}
+// 기존 비고에서 이전 자동 블록([분납] 줄)만 걷어내고 새 블록을 맨 앞에 붙임 (재생성 시 중복 방지)
+function mergeInstallmentNote(existing, block) {
+  const base = String(existing || '').split('\n').filter(l => !l.trim().startsWith('[분납]')).join('\n').trim();
+  return block + (base ? '\n\n' + base : '');
+}
+// --- installment-pure-end ---
+function readInstallment() {
+  if (!$('inst-on').checked) return null;
+  return {
+    a1: Number($('inst1-amt').value || 0), d1: $('inst1-date').value,
+    a2: Number($('inst2-amt').value || 0), d2: $('inst2-date').value,
+  };
+}
+$('inst-on').onchange = () => {
+  const on = $('inst-on').checked;
+  $('inst-box').style.display = on ? '' : 'none';
+  if (!on) return;
+  const total = Number($('total').value || 0);
+  if (total > 0 && !$('inst1-amt').value && !$('inst2-amt').value) {   // 50/50 제안, 수정 가능
+    const half = Math.round(total / 2 / 1000) * 1000;
+    $('inst1-amt').value = half; $('inst2-amt').value = total - half;
+  }
+  if (!$('inst1-date').value) $('inst1-date').value = fmtDate(new Date());
+};
+
 $('btn-reset').onclick = () => {
-  ['m-name','m-phone','m-birth','m-email','m-address','total','period-start','period-end','gym-days','gym-end','locker-no','locker-months','notes'].forEach(id => $(id).value='');
+  ['m-name','m-phone','m-birth','m-email','m-address','total','period-start','period-end','gym-days','gym-end','locker-no','locker-months','notes',
+   'inst1-amt','inst1-date','inst2-amt','inst2-date'].forEach(id => $(id).value='');
   ['total','period-end','gym-days','gym-end'].forEach(id => { delete $(id).dataset.touched; });
+  $('inst-on').checked = false; $('inst-box').style.display = 'none';
   items.length = 0; renderItems();
   $('result').style.display='none';
   $('err').textContent='';
@@ -273,6 +322,12 @@ $('btn-create').onclick = async () => {
   }
   const total = Number($('total').value || 0);
   if (total <= 0) { $('err').textContent = '총 결제금액을 입력하세요.'; return; }
+
+  // 분납(2회): 합계·일자 검증 후 비고란 맨 앞에 정형 블록 기재 (약관 제5조와 짝)
+  const inst = readInstallment();
+  const instErr = validateInstallment(inst, total);
+  if (instErr) { $('err').textContent = instErr; return; }
+  if (inst) $('notes').value = mergeInstallmentNote($('notes').value, buildInstallmentNote(inst, total));
 
   const token = rndToken();
   const expireDays = Math.max(1, Math.min(60, Number($('expire-days').value || 7)));
@@ -339,6 +394,7 @@ $('btn-create').onclick = async () => {
     '본인확인 → 약관 확인 → 동의 체크 3단계로 간편하게 진행하실 수 있습니다.\n\n' +
     '■ 계약 내용\n' + itemSummary + '\n' +
     '총 결제금액 ' + total.toLocaleString() + '원\n' +
+    (inst ? '분납: 1차 ' + won(inst.a1) + ' (' + fmtDot(inst.d1) + ') / 2차 ' + won(inst.a2) + ' (' + fmtDot(inst.d2) + ' 납입 예정)\n' : '') +
     ($('gym-days').value && $('gym-end').value
       ? '무료 짐 이용권 ' + $('gym-days').value + '일 (~ ' + $('gym-end').value + ')\n'
       : '') + '\n' +

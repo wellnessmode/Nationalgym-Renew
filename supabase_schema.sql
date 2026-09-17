@@ -1101,14 +1101,50 @@ on conflict (contract_type, version) do update set
   privacy_json       = excluded.privacy_json,
   refund_policy_json = excluded.refund_policy_json;
 
+-- ===========================================================================
+-- 분납(분할 납입) 조항 §5 추가 — 2026-09-17 신규 버전 (매니저 분납 기준 §1 채택)
+--   활성 약관 4종(PT 공통·PT 서초·combo·golf)의 본문 끝에 "5. 분납" 상시 조항을 붙인
+--   새 버전을 만들고, 구버전은 아래 비활성화 블록에서 끔. 기서명 계약은 template_id 로
+--   시점 고정(스냅샷 박제)이라 영향 없음.
+--   insert…select 라 본문을 재기재하지 않고, "구버전 행"을 읽어 §5 를 1회만 붙이므로
+--   재실행해도 이중 삽입 없음(idempotent). 분납 조건(회차·금액·예정일) 자체는
+--   admin 의 '분납 계약(2회)' 체크로 비고란에 자동 기재됨 (js/admin.js).
+-- ===========================================================================
+insert into public.contract_templates (contract_type, version, branch, title, body_html, agreements_json, privacy_json, refund_policy_json)
+select t.contract_type, m.new_version, t.branch, t.title,
+       t.body_html || $s5$
+<h3>5. 분납(분할 납입)</h3>
+<ul>
+<li>계약금액을 나누어 납입하는 경우에도 본 계약은 계약서에 기재된 <b>총 계약금액과 전체 회차</b>를 기준으로 성립하며, 납입 회차·금액·납입(예정)일은 본 계약서 비고란에 기재합니다.</li>
+<li>납입 예정일까지 해당 회차의 납입이 이루어지지 않은 경우, 센터는 납입이 완료될 때까지 <b>잔여 회차의 진행을 보류</b>할 수 있습니다.</li>
+<li>분납 여부와 관계없이 중도 해지 시의 환급은 본 계약서의 환불 규정(제3조)에 따릅니다.</li>
+</ul>$s5$,
+       t.agreements_json, t.privacy_json, t.refund_policy_json
+  from (values
+          ('pt',    '2026-06-22',        '2026-09-17'),
+          ('pt',    '2026-06-22-seocho', '2026-09-17-seocho'),
+          ('combo', '2026-06-10',        '2026-09-17'),
+          ('golf',  '2026-06-10',        '2026-09-17')
+       ) as m(contract_type, old_version, new_version)
+  join public.contract_templates t
+    on t.contract_type = m.contract_type and t.version = m.old_version
+on conflict (contract_type, version) do update set
+  title              = excluded.title,
+  branch             = excluded.branch,
+  body_html          = excluded.body_html,
+  agreements_json    = excluded.agreements_json,
+  privacy_json       = excluded.privacy_json,
+  refund_policy_json = excluded.refund_policy_json;
+
 -- 구버전 시드 비활성화 — 최신만 활성. 발송/서명된 계약은 template_id 로 시점 고정.
---   PT 공통(branch IS NULL): 2026-06-22 활성 (용산 1호점 + branch 미일치 시 fallback).
---   PT 서초 2호점 전용(branch='서초 2호점'): 2026-06-22-seocho 활성 — 운영시간만 07-22 로 다름.
+--   현행(2026-09-17): PT 공통(branch IS NULL) 2026-09-17 / PT 서초 2호점 2026-09-17-seocho /
+--   combo 2026-09-17 / golf 2026-09-17. 2026-06-22·2026-06-10 세대는 §5 없는 구버전으로 비활성.
 update public.contract_templates set is_active = false
  where (contract_type, version) in (
    ('combo','2026-04-28'), ('pt','2025-07-25'), ('golf','2026-04-28'),
    ('combo','2026-05-19'), ('pt','2026-05-19'),  ('golf','2026-05-19'),
-   ('pt','2026-06-10')
+   ('pt','2026-06-10'),
+   ('pt','2026-06-22'), ('pt','2026-06-22-seocho'), ('combo','2026-06-10'), ('golf','2026-06-10')
  );
 
 -- ===========================================================================

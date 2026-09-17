@@ -79,6 +79,20 @@
         </select>
       </label>
     </div>
+    <label style="display:flex;align-items:center;gap:8px;">
+      <input type="checkbox" id="inst-on" style="width:auto;margin:0;"> 분납 계약 (2회) — 체크 시 분납 일정이 비고란에 자동 기재됩니다
+    </label>
+    <div id="inst-box" style="display:none">
+      <div class="row">
+        <label>1차 금액 (원) <input id="inst1-amt" type="number" min="0" step="1000"></label>
+        <label>1차 납입일 <input id="inst1-date" type="date"></label>
+      </div>
+      <div class="row">
+        <label>2차 금액 (원) <input id="inst2-amt" type="number" min="0" step="1000"></label>
+        <label>2차 납입 예정일 <input id="inst2-date" type="date"></label>
+      </div>
+      <p class="muted small">1차 + 2차 = 총 결제금액이어야 발송됩니다. 3회 이상 분납은 할부거래법 적용 대상이므로 카드 할부로 안내하세요. 미납 시 보류·환불 기준은 약관 제5조가 규정하므로 비고에 다시 적지 않습니다.</p>
+    </div>
     <div class="row">
       <label>이용 시작일 <input id="period-start" type="date"></label>
       <label>이용 종료일 (시작일+1년 자동) <input id="period-end" type="date"></label>
