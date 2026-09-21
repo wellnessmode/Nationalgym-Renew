@@ -19,7 +19,20 @@
 | admin(직원 발송) | https://wellnessmode.github.io/Nationalgym-Renew/admin.html |
 | list(KPI·검색·백업) | https://wellnessmode.github.io/Nationalgym-Renew/list.html |
 | GitHub 레포 | https://github.com/wellnessmode/nationalgym-renew |
-- 사용자 = 대표(ceo@nationalgym.kr), 비개발자에 가깝지만 Supabase 콘솔에서 SQL 실행·계정 생성 정도는 직접 수행함. 그 이상의 기술 작업은 기대하지 말 것.
+- 사용자 = 대표. 비개발자에 가깝지만 Supabase 콘솔에서 SQL 실행·계정 생성 정도는 직접 수행함. 그 이상의 기술 작업은 기대하지 말 것.
+
+## ⚠️ 계정 두 개 — 항상 헷갈려함 (2026-09-21 명시 교정, 절대 섞지 말 것)
+
+완전히 다른 시스템의 로그인이다. 사용자가 반복해서 헷갈리므로 매번 먼저 구분해서 답할 것.
+
+| 계정 | 용도 | 비고 |
+|---|---|---|
+| **`project.renew@nationalgym.kr`** | **Supabase 콘솔(대시보드) 로그인.** SQL Editor·프로젝트 설정 접근용 | 스크린샷 상단에 "project.renew@nationalgym.kr's Org" 로 확인됨. 로그인 수단(GitHub/구글/이메일)은 화면을 볼 수 없어 불명 |
+| `ceo@nationalgym.kr` | **앱 내부 로그인** (admin.html/list.html). `auth.users` 의 `role:admin` — 전 지점 열람 | 콘솔과 무관, 오직 전자계약 웹앱용. 세션 컨텍스트의 userEmail 도 이 주소(claude.ai 계정 이메일 — 이것도 또 다른 별개 식별자) |
+| `yongsan@` / `seocho@` / `ptgolf@nationalgym.kr` | 앱 내부 로그인, 지점별(`branches:[...]`) | 마찬가지로 콘솔과 무관 |
+
+- Supabase **콘솔** 얘기(SQL 실행 주체, 프로젝트 소유자)가 나오면 → `project.renew@nationalgym.kr`
+- 전자계약 **웹앱** 로그인(계약 발송·조회 화면) 얘기가 나오면 → `ceo@`/`yongsan@`/`seocho@`/`ptgolf@nationalgym.kr`
 
 ## 주의
 
