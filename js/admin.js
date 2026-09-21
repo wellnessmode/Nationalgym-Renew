@@ -230,8 +230,9 @@ function renderItems() {
 function recalcTotal() {
   const sum = items.reduce((s, it) => s + (Number(it.price) || 0), 0);
   if (!$('total').dataset.touched) $('total').value = sum;
+  syncInstallment();          // 항목 금액으로 총액이 바뀌면 분납 금액·비고도 따라가야 함
 }
-$('total').oninput = () => { $('total').dataset.touched = '1'; };
+$('total').oninput = () => { $('total').dataset.touched = '1'; syncInstallment(); };
 $('btn-add-item').onclick = () => { items.push({ name:'', qty:'', price:0 }); renderItems(); };
 
 // --- 분납(2회) 헬퍼 ---------------------------------------------------------
@@ -256,12 +257,32 @@ function buildInstallmentNote(inst, total) {
   return '[분납] 총 결제금액 ' + won(total) + '을 2회 분납 — 1차 ' + won(inst.a1) + '(' + fmtDot(inst.d1) + ' 납입) / 2차 '
     + won(inst.a2) + '(' + fmtDot(inst.d2) + ' 납입 예정). 분납 관련 사항은 약관 제5조에 따름.';
 }
-// 기존 비고에서 이전 자동 블록([분납] 줄)만 걷어내고 새 블록을 맨 앞에 붙임 (재생성 시 중복 방지)
+// 비고에서 이전 자동 블록([분납] 줄)만 걷어냄 (직원이 직접 쓴 비고는 보존)
+function stripInstallmentNote(existing) {
+  return String(existing || '').split('\n').filter(l => !l.trim().startsWith('[분납]')).join('\n').trim();
+}
 function mergeInstallmentNote(existing, block) {
-  const base = String(existing || '').split('\n').filter(l => !l.trim().startsWith('[분납]')).join('\n').trim();
+  const base = stripInstallmentNote(existing);
   return block + (base ? '\n\n' + base : '');
 }
+// 총액 기준 분납 분할. 직원이 1차를 정했으면 그대로 두고 2차만 맞춰 항상 합계=총액 유지.
+// 1차가 없거나 총액을 넘으면 50/50(천원 단위) 제안.
+function splitFor(total, a1) {
+  if (!(total > 0)) return null;
+  if (!(a1 > 0) || a1 >= total) {
+    const half = Math.round(total / 2 / 1000) * 1000;
+    return { a1: half, a2: total - half };
+  }
+  return { a1: a1, a2: total - a1 };
+}
 // --- installment-pure-end ---
+// 2차 납입 예정일 기본값(1차 + n개월). 직원이 수정 가능한 제안값일 뿐.
+function addMonths(iso, m) {
+  const d = new Date(iso + 'T00:00:00');
+  if (isNaN(d)) return '';
+  d.setMonth(d.getMonth() + m);
+  return fmtDate(d);
+}
 function readInstallment() {
   if (!$('inst-on').checked) return null;
   return {
@@ -269,23 +290,53 @@ function readInstallment() {
     a2: Number($('inst2-amt').value || 0), d2: $('inst2-date').value,
   };
 }
-$('inst-on').onchange = () => {
+// 분납 상태를 총 결제금액 기준으로 재동기화 + 비고란 실시간 반영.
+// 총액이 바뀔 때마다(항목 금액 입력 / 총액 직접 입력) 호출되어야 금액이 옛 값으로 남지 않는다.
+function syncInstallment(keep) {
   const on = $('inst-on').checked;
   $('inst-box').style.display = on ? '' : 'none';
-  if (!on) return;
+  if (!on) { clearInstallmentNote(); return; } // 해제 시 자동 문구만 제거
   const total = Number($('total').value || 0);
-  if (total > 0 && !$('inst1-amt').value && !$('inst2-amt').value) {   // 50/50 제안, 수정 가능
-    const half = Math.round(total / 2 / 1000) * 1000;
-    $('inst1-amt').value = half; $('inst2-amt').value = total - half;
-  }
+  // keep='a2' 면 직원이 2차를 고친 것 → 1차를 맞춤. 그 외엔 1차 기준으로 2차를 맞춤.
+  const sp = keep === 'a2'
+    ? (() => { const a2 = Number($('inst2-amt').value || 0);
+               return splitFor(total, total > 0 && a2 > 0 && a2 < total ? total - a2 : 0); })()
+    : splitFor(total, Number($('inst1-amt').value || 0));
+  if (sp) { $('inst1-amt').value = sp.a1; $('inst2-amt').value = sp.a2; }
   if (!$('inst1-date').value) $('inst1-date').value = fmtDate(new Date());
-};
+  if (!$('inst2-date').value) $('inst2-date').value = addMonths($('inst1-date').value, 1);
+  refreshInstallmentNote();
+}
+// 자동 [분납] 줄이 실제로 있을 때만 비고를 건드린다 (직원이 비고 입력 중 줄바꿈이 잘리는 것 방지)
+function clearInstallmentNote(msg) {
+  const cur = $('notes').value;
+  if (/^\s*\[분납\]/m.test(cur)) $('notes').value = stripInstallmentNote(cur);
+  $('inst-preview').textContent = msg || '';
+}
+// 유효하면 비고란에 문구를 즉시 기록(직원이 발송 전에 눈으로 확인), 아니면 문구를 지우고 사유 표시
+function refreshInstallmentNote() {
+  const total = Number($('total').value || 0);
+  const inst = readInstallment();
+  const err = validateInstallment(inst, total);
+  if (!inst || err) {
+    clearInstallmentNote(inst ? ('⚠️ ' + err) : '');
+    return;
+  }
+  const block = buildInstallmentNote(inst, total);
+  $('notes').value = mergeInstallmentNote($('notes').value, block);
+  $('inst-preview').textContent = '✓ 비고란에 자동 기재됨 — ' + block;
+}
+$('inst-on').onchange = () => syncInstallment();
+$('inst1-amt').oninput = () => syncInstallment();
+$('inst2-amt').oninput = () => syncInstallment('a2');
+$('inst1-date').oninput = refreshInstallmentNote;
+$('inst2-date').oninput = refreshInstallmentNote;
 
 $('btn-reset').onclick = () => {
   ['m-name','m-phone','m-birth','m-email','m-address','total','period-start','period-end','gym-days','gym-end','locker-no','locker-months','notes',
    'inst1-amt','inst1-date','inst2-amt','inst2-date'].forEach(id => $(id).value='');
   ['total','period-end','gym-days','gym-end'].forEach(id => { delete $(id).dataset.touched; });
-  $('inst-on').checked = false; $('inst-box').style.display = 'none';
+  $('inst-on').checked = false; $('inst-box').style.display = 'none'; $('inst-preview').textContent = '';
   items.length = 0; renderItems();
   $('result').style.display='none';
   $('err').textContent='';

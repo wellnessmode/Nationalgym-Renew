@@ -91,7 +91,8 @@
         <label>2차 금액 (원) <input id="inst2-amt" type="number" min="0" step="1000"></label>
         <label>2차 납입 예정일 <input id="inst2-date" type="date"></label>
       </div>
-      <p class="muted small">1차 + 2차 = 총 결제금액이어야 발송됩니다. 3회 이상 분납은 할부거래법 적용 대상이므로 카드 할부로 안내하세요. 미납 시 보류·환불 기준은 약관 제5조가 규정하므로 비고에 다시 적지 않습니다.</p>
+      <p class="muted small" id="inst-preview"></p>
+      <p class="muted small">총 결제금액이 바뀌면 분납 금액이 자동으로 다시 계산되고, 비고란 문구도 실시간으로 갱신됩니다. 1차 금액을 직접 고치면 2차가 자동으로 맞춰집니다(합계는 항상 총 결제금액). 3회 이상 분납은 할부거래법 적용 대상이므로 카드 할부로 안내하세요. 미납 시 보류·환불 기준은 약관 제5조가 규정하므로 비고에 다시 적지 않습니다.</p>
     </div>
     <div class="row">
       <label>이용 시작일 <input id="period-start" type="date"></label>
